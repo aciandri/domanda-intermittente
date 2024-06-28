@@ -1,0 +1,570 @@
+rm(list = ls())
+source('~/Desktop/tesi_magistrale/pratica-tesi_mag/codiceR/funzioni_tesi.R')
+da_eliminare = read.table('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/da_eliminare.txt')
+sku = read.csv('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/generali/sku_new.csv')
+da_analizzare = which(!sku$SBC[sku$cat_SBC == 'lumpy'] %in% da_eliminare$x) # prendo solo i file non da eliminare
+
+### Librerie ####
+library(dplyr)
+library(lubridate)
+library(scoring) # per regole di scoring
+library(ggplot2) # per grafico PIT
+library(dgof) # per test KS
+
+library(mgcv) # per GAM 
+library(quantreg) # per QR
+library(forecast) # per Croston e ARIMA etc
+library(tsintermittent) # per SBA
+library(truncnorm) # per ARIMA
+#install.packages("remotes")
+#remotes::install_github("config-i1/counter")
+library(counter) # HSP
+library(maxLik) # damped mean
+
+previsioni = read.csv('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_lumpy_completo.csv')
+table(previsioni$Serie)
+table(previsioni$Metodo)
+length(unique(previsioni$Serie))
+#sku$SBC[sku$cat_SBC == 'lumpy'][da_analizzare] [which(!sku$SBC[sku$cat_SBC == 'lumpy'][da_analizzare] %in% previsioni$Serie)]
+tau = seq(.01, .99, by = .01)
+flaggati = c() # contiene le serie BN che vengono fatte con Poisson (caso limite)
+perc_0 = 0 # percentuale di 0 nelle serie
+
+sss = Sys.time()
+for(nome_serie in sku$SBC[sku$cat_SBC == 'lumpy'][da_analizzare][which(!sku$SBC[sku$cat_SBC == 'lumpy'][da_analizzare] %in% previsioni$Serie)][1:50]){ # applico i metodi per ogni serie
+  
+  print(nome_serie)
+  file_path = paste0('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/lumpy/', nome_serie ,'.csv')
+  dati = read.csv(file_path)
+  perc_0 = perc_0 + prop.table(table(dati$vendite == 0))[2] # per calcolare la % di 0
+  nome = nome_serie
+  df_prev= data.frame(Serie = nome, h = seq(1:56)) # per gamqr
+  
+  #####
+  ### Operazioni preliminari ####
+  #####
+  
+  
+  ## Trasformo in fattori le variabili che necessitano
+  dati$snap_CA = as.factor(dati$snap_CA)
+  dati$snap_TX = as.factor(dati$snap_TX)
+  dati$snap_WI = as.factor(dati$snap_WI)
+  
+  ## Qual quant
+  quant = colnames(dati[,which(lapply(colnames(dati), 
+                                      function(x) is.numeric(dati[,x])) == T)])
+  qual = setdiff(colnames(dati), quant)
+  qual = setdiff(qual, 'date')
+  for(el in qual){
+    dati[,el] = factor(dati[,el])
+  }
+  
+  str(dati) # 5823 24
+  
+  ## Elimino le osservazioni 0 iniziali
+  # inizio = min(dati$date[which(dati$vendite!= 0 )])
+  #  print(inizio)
+  # if(inizio != min(dati$date)) dati = dati[-( which( dati$date < as.Date(inizio))),]
+  #  dati$last_sales_bet[1] = 0
+  
+  ####
+  ## Divido i dati ####
+  ###
+  train = dati[dati$periodo == 1,]
+  test = dati[dati$periodo != 1,]
+  
+  train_ts = ts(train$vendite, start = c(2012, 75), frequency = 365.25)
+  plot(train_ts)
+  # val_ts = ts(val$vendite, start = c(2016, 86), frequency = 365.25)
+  #  plot(val_ts)
+  test_ts = ts(test$vendite, start = c(2016, 86), frequency = 365.25) # "2016-03-27" (115)
+  plot(test_ts)
+  
+  train$date = test$date = train$periodo = test$periodo =NULL # elimino la data, mi serviva solo per dividere i dati
+  test$event_name_1[which(!(test$event_name_1) %in% (train$event_name_1))] = ' '
+  
+  ####
+  ### GAM QR ####
+  ####
+  
+  # quant qual
+  quant_gamqr = colnames(train[,which(lapply(colnames(train), 
+                                             function(x) is.numeric(train[,x])) == T)])
+  qual_gamqr = setdiff(colnames(train), quant_gamqr)
+  cost = costanti(train)
+  train[,cost[1:(length(cost)-3)]] = NULL
+  
+  # controllo eventuali variabili problematiche (prezzo): potrebbe essere costante (da levare) o con pochi valori (da trasformare in fattore)
+  info_prezzo = c('prezzo', 'relative_price_cat', 'relative_price_dep')
+  
+  formula_co = 'vendite ~  event_type_1 + event_name_1+ s(prop_week, k = length(unique(train$prop_week))) + s(media_28) + s(media_7)' 
+  
+  for(price in info_prezzo){
+    if( price %in% colnames(train) ) { # se non è costante
+      
+      if(length(unique(train[,price]))< 3) {
+        if('FALSE' %in% names(table(unique(test[,price]) %in% unique(train[,price])))) {
+          train[,price] = test[,price] = NULL
+          quant_gamqr = setdiff(quant_gamqr, price)
+          next
+        }
+        
+        train[,price] = factor(train[,price]) 
+        test[,price] = factor(test[,price]) 
+      }
+      
+      aggiunta = ifelse(is.factor(train[,price]), price , paste0('s(',price,', k = length(unique(train$',price, ')))')) # se ha meno di 3 valori unici come fattore, sennò normale
+      formula_co = paste0(formula_co, '+', aggiunta)
+      
+      if(is.factor(train[,price])){ # aggiusto quant e qual
+        qual_gamqr = c(qual_gamqr, price)
+        quant_gamqr = setdiff(quant_gamqr, price)
+      }
+      
+    }
+    if(! price %in% colnames(train)) quant_gamqr = setdiff(quant_gamqr, price)
+    
+  }
+  quant_gamqr = setdiff(quant_gamqr, c('vendite'))
+  formula_co = as.formula(formula_co)
+  
+  # normalizzo i dati in base al train
+  medie = colMeans(train[,quant_gamqr])
+  std = apply(train[, quant_gamqr], 2, sd)
+  train[,quant_gamqr] = scale(train[,quant_gamqr])
+  test[,quant_gamqr] = scale(test[,quant_gamqr], center = medie, scale = std )
+  #val[,quant_gamqr] = scale(val[,quant_gamqr], center = medie, scale = std )
+  
+  
+  ##### GAM ####
+  mod_gam_co = gam(formula_co, family = nb ( link = 'log'), data = train, method = 'REML', optimizer = c('outer','bfgs'), control = gam.control( irls.reg = .5))
+  
+  mod_gam_noco = gam(vendite ~ s(media_28,  k = length(unique(train$media_28))) + s(media_7,  k =  length(unique(train$media_7))) , family = nb ( link = 'log'), data = train)
+  summary(mod_gam_noco)
+  
+  effetti_noco = predict(mod_gam_noco, type = "terms")
+  effetti_co = predict(mod_gam_co, type = 'terms')
+  if(costanti(effetti_co, unici = 2,numero = T) != 0){ # se hanno meno di 2 valopri unici => problema di non singolarità della matrice
+    cost_gam = costanti(effetti_co, unici = 2)
+    effetti_co = effetti_co [,-which(colnames(effetti_co) %in% cost_gam)]
+  }
+  
+  ##### Regressione quantile per dati di conteggio ####
+  
+  ## No covariate
+  gamqr_noco = count_quantile_avg_jittering(train, y = 'vendite', x = effetti_noco, test = test, mod_gam = mod_gam_noco, m = 50, flag = T)
+  
+  prev_gamqr_noco = data.frame(Metodo = 'GAM-QR(noco)')
+  prev_gamqr_noco = cbind(prev_gamqr_noco, test$vendite)
+  colnames(prev_gamqr_noco)[2] = 'vendite'
+  
+  for(quantile in names(gamqr_noco)){
+    #print(prova[[quantile]][1])
+    prev_gamqr_noco[paste0('quant_', quantile)] = 
+      ceiling(as.numeric(quantile) + exp(gamqr_noco[[as.character(quantile)]])-1)
+  }
+  
+  ## Con covariate
+  gamqr_co = count_quantile_avg_jittering(train, y = 'vendite', x = effetti_co, test = test, flag = T, mod_gam = mod_gam_co, m = 50)
+  
+  prev_gamqr_co = data.frame(Metodo = 'GAM-QR(co)')
+  prev_gamqr_co = cbind(prev_gamqr_co, test$vendite)
+  colnames(prev_gamqr_co)[2] = 'vendite'
+  
+  for(quantile in names(gamqr_co)){
+    #print(prova[[quantile]][1])
+    prev_gamqr_co[paste0('quant_', quantile)] = 
+      ceiling(as.numeric(quantile) + exp(gamqr_co[[as.character(quantile)]])-1)
+  }
+  
+  quant_y = rbind(prev_gamqr_co, prev_gamqr_noco)
+  
+  # salvo i risultati ####
+  df_prev = cbind(df_prev, quant_y)
+  df_prev$quant_1 = df_prev$quant_0.99
+  
+  ####
+  ### Croston & SBA #####
+  ####
+  
+  mod_crost = croston(train_ts, h = 56)
+  mod_sba = crost(train_ts, 56, type = 'sba')
+  
+  ## Estraggo i quantili
+  prev_crost = df_prev[1:56,]
+  prev_crost$Metodo = 'Croston'
+  
+  prev_crost [,5:103]= t(sapply(mod_crost$mean, function(x) qnbinom(tau, size = 10*x, mu = x)))
+  
+  ## Salvo le previsioni ####
+  head(prev_crost)
+  df_prev = rbind(df_prev, prev_crost)
+  
+  #### SBA ####
+  prev_sba = df_prev[1:56,]
+  prev_sba$Metodo = 'SBA'
+  prev_sba [,5:103]= t(sapply(mod_sba$frc.out, function(x) qnbinom(tau, size = 10*x, mu = x)))
+  prev_sba[,104 ] = prev_sba[,103]
+  
+  ## Salvo le previsioni ####
+  head(prev_sba)
+  df_prev = rbind(df_prev, prev_sba)
+  
+  ####tsb ####
+  mod_tsb = tsb(train_ts, 56)
+  #mod_tsb$frc.out
+  
+  prev_tsb = df_prev[1:56,]
+  prev_tsb$Metodo = 'TSB'
+  prev_tsb [,5:103]= t(sapply(mod_tsb$frc.out, function(x) qnbinom(tau, size = 10*x, mu = x)))
+  
+  ## Salvo le previsioni ####
+  df_prev = rbind(df_prev, prev_tsb)
+  
+  ####
+  ### ARIMA ####
+  ####
+  
+  mod_arima = auto.arima(train_ts) #ARIMA(1,1,2)
+  fore_arima = forecast(mod_arima, h = 56)
+  
+  std_devs <- (fore_arima$upper[,2] - fore_arima$lower[,2]) / (2 * 1.96)
+  prev_arima = df_prev[1:56,]
+  prev_arima$Metodo = 'ARIMA'
+  
+  for(i in 1:56){
+    riga = qtruncnorm(tau, a = 0, mean = fore_arima$mean[i], sd = std_devs[i])
+    riga = c(riga, riga[length(riga)])
+    
+    prev_arima[i, 5:104] = riga
+  }
+  prev_arima[,5:104] = round(prev_arima[, 5:104])
+  
+  ## Salvo le previsioni ####
+  df_prev = rbind(df_prev, prev_arima)
+  table(df_prev$Metodo)
+  
+  ####
+  ### ETS ####
+  ####
+  
+  mod_ets = ets(train_ts, model = 'AZN')
+  #str(mod_ets)
+  fore_ets = forecast(mod_ets, h = 56)
+  
+  std_devs <- (fore_ets$upper[,2] - fore_ets$lower[,2]) / (2 * 1.96)
+  prev_ets = df_prev[1:56,]
+  prev_ets$Metodo = 'ETS'
+  
+  for(i in 1:56){
+    riga = qtruncnorm(tau, a = 0, mean = fore_ets$mean[i], sd = std_devs[i])
+    riga = c(riga, riga[length(riga)])
+    
+    prev_ets[i, 5:104] = riga
+  }
+  prev_ets[,5:104] = round(prev_ets[, 5:104])
+  
+  ## Salvo le previsioni ####
+  df_prev = rbind(df_prev, prev_ets)
+  table(df_prev$Metodo)
+  
+  ## iETS(o) ####
+  
+  library(smooth)
+  mod_iets = adam(train_ts, "MNN", occurrence="o", oesmodel="ZZN", h=56, holdout=TRUE, silent=FALSE,
+                  distribution = "dgamma") # dava MMN e MMN. Il paper diceva MNN
+  fore_iets = forecast(mod_iets, h = 56, interval = 'simulated', level = seq(.02, .98, by = .02))#seq(.01,.99, by = .01))
+  #str(fore_iets)
+  
+  fore_iets_df = data.frame(fore_iets$lower)
+  fore_iets_df = fore_iets_df[, ncol(fore_iets_df):1]
+  fore_iets_df =cbind(fore_iets_df, data.frame(fore_iets$upper))
+  #str(fore_iets_df)
+  stringhe= strsplit(colnames(fore_iets_df), '\\.')
+  
+  for(i in 1:length(stringhe)){
+    el = stringhe[[i]]
+    #print(el[4])
+    if(as.numeric(el[4]) < 10) colnames(fore_iets_df)[i] = paste0('quant_0.0', el[4])
+    else{ colnames(fore_iets_df)[i] = paste0('quant_0.', el[4]) }
+  }
+  
+  prev_iets = prev_arima
+  prev_iets$Metodo = 'iETS(MNN)[O]'
+  for(quantile in 2:ncol(fore_iets_df)){
+    prev_iets[,quantile+3] = ceiling(fore_iets_df[,quantile])
+  }
+  #str(prev_iets)
+  prev_iets$quant_1 = prev_iets$quant_0.99
+  
+  ## iETS altri ####
+  prev_iets_i <- iETS_quant(train = train_ts, tipo = 'inverse-odds-ratio',  prev_arima = prev_arima)
+  prev_iets_d <- iETS_quant(train = train_ts, tipo = 'direct', prev_arima = prev_arima)
+  prev_iets_g <- iETS_quant(train = train_ts, tipo = 'general', prev_arima = prev_arima)
+  prev_iets_i$Metodo ='iETS(MNN)[I]'
+  df_prev = rbind(df_prev, prev_iets_i, prev_iets_g, prev_iets_d)
+  
+  
+  ## Salvo #####
+  df_prev = rbind(df_prev, prev_iets)
+  table(df_prev$Metodo)
+  
+  ## bootstrap WSS ####
+  wss = boot_wss()
+  #str(wss)
+  
+  prev_wss = prev_arima
+  prev_wss$Metodo = 'Bootstrap WSS'
+  for(quantile in 2:ncol(wss)){
+    prev_wss[,quantile+3] = wss[,quantile]
+  }
+  #str(prev_wss)
+  prev_wss$quant_1 = prev_wss$quant_0.99
+  
+  ## Salvo #####
+  df_prev = rbind(df_prev, prev_wss)
+  table(df_prev$Metodo)
+  #df_prev = rbind(previsioni, df_prev)
+  #write.csv(df_prev, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_int.csv', row.names = FALSE)#, append = T)
+  
+  ## Poisson ####
+  mu = mean(train$vendite)
+  alpha = .1
+  phi = .1
+  #tau = seq(.01, .99, by = .01)
+  
+  prva = maxLik(pois_fun_iniz, start =  c(.1, .1, mean(train_ts)), method = 'BFGS')
+  
+  alpha = prva$estimate[1]
+  phi = prva$estimate[2]
+  mu = prva$estimate[3]
+  mu1 = yt1 = mu_est = train_ts[1]
+  
+  for(i in 3:nrow(train)){
+    mu_est = c(mu_est, (1-alpha-phi)*mu + phi*mu_est[length(mu_est)] + alpha*train_ts[i-1])
+  }
+  
+  ## Simulazioni
+  # voglio 1000 simulazioni per ogni orizzonte temporale? Quindi 56x1000
+  simulazioni = data.frame(h = seq(1:56), matrix(NA, 56, 1000))
+  colnames(simulazioni)[2:ncol(simulazioni)] = sapply(1:1000, function(x) paste0('sim_', x)) 
+  mu_t1 = mu_est[length(mu_est)]
+  yt1 = train$vendite[nrow(train)]
+  pt1_formula = (1-alpha-phi)*mu 
+  
+  for(oss in 1:56){
+    mu_t = pt1_formula + phi*mu_t1 + alpha*yt1 # utilizzo la formula per la poisson con media damped
+    
+    # aggiorno le componenti che variano nel tempo
+    mu_t1 = mu_t
+    set.seed(1)
+    yt1 = rpois(1000, mu_t) # per avere y_{t-1} pesco una osservazione casuale dalla poisson corrente
+    simulazioni[oss,2:ncol(simulazioni)] = cbind(yt1)
+  }
+  
+  prev_pois = data.frame(Serie = nome_serie)
+  Metodo = 'Poisson'
+  prev_pois = cbind(prev_pois, simulazioni$h, Metodo, test$vendite)
+  colnames(prev_pois)[c(2,4)] = c('h','vendite')
+  prev_pois = cbind(prev_pois, t(sapply(1:56, function(x) quantile(t(simulazioni)[2:ncol(simulazioni),x], tau))))
+  colnames(prev_pois)[5:ncol(prev_pois)] = sapply(tau, function(x) paste0('quant_', x))
+  
+  prev_pois$quant_1 = prev_pois$quant_0.99
+  
+  df_prev = rbind(df_prev, prev_pois)
+  
+  ## Binomiale negativa ####
+  mu = mean(train$vendite)
+  alpha = .1
+  phi = .1
+  b = mu/(var(train$vendite) - mu)# mu/k in base alla distribuzione
+  tau = seq(.01, .99, by = .01)
+  flag = T # diventa F se b > 99 => in base a Snyder andiamo a prendere la Poisson come caso limite
+  if(b <= 0 | b > 99){ # se b <0 indica sottodispersione (come quando b > 99) => si torna al caso limite poisson
+    flaggati = c(flaggati, nome_serie)
+    
+    prev_nbinom = df_prev[df_prev$Metodo == 'Poisson' & df_prev$Serie == nome_serie,]
+    prev_nbinom$Metodo = 'NegBinom'
+    flag = F
+  }
+  
+  if(flag){
+    prva = maxLik(bn_fun_iniz, start =  c(.1, .1, b, mean(train_ts)), method = 'BFGS')
+    
+    alpha = prva$estimate[1]
+    phi = prva$estimate[2]
+    b = prva$estimate[3]
+    mu = prva$estimate[4]
+    mu1 = yt1 = mu_est = train_ts[1]
+    if(b > 99) {
+      flaggati = c(flaggati, nome_serie)
+      
+      prev_nbinom = df_prev[df_prev$Metodo == 'Poisson' & df_prev$Serie == nome_serie,]
+      prev_nbinom$Metodo = 'NegBinom'
+      flag = F
+    }}
+  
+  if(flag){
+    for(i in 3:nrow(train)){
+      mu_est = c(mu_est,(1-alpha-phi)*mu + phi*mu_est[length(mu_est)] + alpha*train_ts[i-1])
+    }
+    
+    ## Simulazioni
+    # voglio 1000 simulazioni per ogni orizzonte temporale? Quindi 56x1000
+    simulazioni = data.frame(h = seq(1:56), matrix(NA, 56, 1000))
+    colnames(simulazioni)[2:ncol(simulazioni)] = sapply(1:1000, function(x) paste0('sim_', x))
+    pt1_formula = (1-alpha-phi)*mu # parte tempo indipendente della formula di snydere
+    mu_t1 = mu_est[length(mu_est)]
+    yt1 = train$vendite[nrow(train)]
+    
+    for(oss in 1:nrow(test)){
+      mu_t = pt1_formula + phi*mu_t1 + alpha*yt1 # utilizzo la formula per la poisson con media damped
+      
+      # aggiorno le componenti che variano nel tempo
+      mu_t1 = mu_t
+      set.seed(1)
+      yt1 = rnbinom(1000, mu_t*b, b/(1+b)) # per avere y_{t-1} pesco una osservazione casuale dalla poisson corrente
+      simulazioni[oss,2:ncol(simulazioni)] = cbind(yt1)
+    }
+    
+    
+    prev_nbinom = data.frame(Serie = nome_serie)
+    Metodo = 'NegBinom'
+    prev_nbinom = cbind(prev_nbinom, simulazioni$h, Metodo, test$vendite)
+    colnames(prev_nbinom)[c(2,4)] = c('h','vendite')
+    prev_nbinom = cbind(prev_nbinom, t(sapply(1:56, function(x) quantile(t(simulazioni)[2:ncol(simulazioni),x], tau))))
+    colnames(prev_nbinom)[5:ncol(prev_nbinom)] = sapply(tau, function(x) paste0('quant_', x))
+    
+    prev_nbinom$quant_1 = prev_nbinom$quant_0.99
+  }
+  
+  previsioni = rbind(previsioni, df_prev, prev_nbinom)
+  write.csv(previsioni, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_lumpy_completo.csv', row.names = FALSE)#, append = T)
+  
+}
+perc_0/100 # / numero di serie
+eee = Sys.time()
+
+previsioni = previsioni[-which(previsioni$Metodo == 'NegBinom')]
+table(previsioni$Metodo)
+table(previsioni$Serie)
+
+flaggati =c()
+start = Sys.time()
+for(nome_serie in unique(previsioni$Serie)){#sku$SBC[sku$cat_SBC == 'intermittent'][da_analizzare][2:25]){
+  print(nome_serie)
+  file_path = paste0('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/lumpy/', nome_serie ,'.csv')
+  dati = read.csv(file_path)
+  #str(dati) # 1941 23
+  nome = nome_serie
+  #df_prev= data.frame(Serie = nome, h = seq(1:56)) # per gamqr
+  
+  #####
+  ### Operazioni preliminari ####
+  #####
+  
+  
+  ## Trasformo in fattori le variabili che necessitano
+  dati$snap_CA = as.factor(dati$snap_CA)
+  dati$snap_TX = as.factor(dati$snap_TX)
+  dati$snap_WI = as.factor(dati$snap_WI)
+  
+  ## Qual quant
+  quant = colnames(dati[,which(lapply(colnames(dati), 
+                                      function(x) is.numeric(dati[,x])) == T)])
+  qual = setdiff(colnames(dati), quant)
+  qual = setdiff(qual, 'date')
+  for(el in qual){
+    dati[,el] = factor(dati[,el])
+  }
+  
+  # str(dati) # 5823 24
+  
+  ## Elimino le osservazioni 0 iniziali
+  # inizio = min(dati$date[which(dati$vendite!= 0 )])
+  #  print(inizio)
+  # if(inizio != min(dati$date)) dati = dati[-( which( dati$date < as.Date(inizio))),]
+  #  dati$last_sales_bet[1] = 0
+  
+  ####
+  ## Divido i dati ####
+  ###
+  train = dati[dati$periodo == 1,]
+  test = dati[dati$periodo != 1,]
+  
+  train_ts = ts(train$vendite, start = c(2012, 75), frequency = 365.25)
+  plot(train_ts)
+  # val_ts = ts(val$vendite, start = c(2016, 86), frequency = 365.25)
+  #  plot(val_ts)
+  test_ts = ts(test$vendite, start = c(2016, 86), frequency = 365.25) # "2016-03-27" (115)
+  plot(test_ts)
+  
+  train$date = test$date = train$periodo = test$periodo =NULL # elimino la data, mi serviva solo per dividere i dati
+  
+  ## Modello ####
+  mu = mean(train$vendite)
+  alpha = .1
+  phi = .1
+  b = mu/(var(train$vendite) - mu)# mu/k in base alla distribuzione
+  tau = seq(.01, .99, by = .01)
+  flag = T # diventa F se b > 99 => in base a Snyder andiamo a prendere la Poisson come caso limite
+  if(b <= 0 | b > 99){ # se b <0 indica sottodispersione (come quando b > 99) => si torna al caso limite poisson
+    flaggati = c(flaggati, nome_serie)
+    
+    prev_nbinom = df_prev[df_prev$Metodo == 'Poisson' & df_prev$Serie == nome_serie,]
+    prev_nbinom$Metodo = 'NegBinom'
+    flag = F
+  }
+  
+  if(flag){
+    prva = maxLik(bn_fun_iniz, start =  c(.1, .1, b, mean(train_ts)), method = 'BFGS')
+    
+    alpha = prva$estimate[1]
+    phi = prva$estimate[2]
+    b = prva$estimate[3]
+    mu = prva$estimate[4]
+    mu1 = yt1 = mu_est = train_ts[1]
+    if(b > 99) {
+      flaggati = c(flaggati, nome_serie)
+      
+      prev_nbinom = df_prev[df_prev$Metodo == 'Poisson' & df_prev$Serie == nome_serie,]
+      prev_nbinom$Metodo = 'NegBinom'
+      flag = F
+    }}
+  
+  if(flag){
+    for(i in 3:nrow(train)){
+      mu_est = c(mu_est,(1-alpha-phi)*mu + phi*mu_est[length(mu_est)] + alpha*train_ts[i-1])
+    }
+    
+    ## Simulazioni
+    # voglio 1000 simulazioni per ogni orizzonte temporale? Quindi 56x1000
+    simulazioni = data.frame(h = seq(1:56), matrix(NA, 56, 1000))
+    colnames(simulazioni)[2:ncol(simulazioni)] = sapply(1:1000, function(x) paste0('sim_', x))
+    pt1_formula = (1-alpha-phi)*mu # parte tempo indipendente della formula di snydere
+    mu_t1 = mu_est[length(mu_est)]
+    yt1 = train$vendite[nrow(train)]
+    
+    for(oss in 1:nrow(test)){
+      mu_t = pt1_formula + phi*mu_t1 + alpha*yt1 # utilizzo la formula per la poisson con media damped
+      
+      # aggiorno le componenti che variano nel tempo
+      mu_t1 = mu_t
+      set.seed(1)
+      yt1 = rnbinom(1000, mu_t*b, b/(1+b)) # per avere y_{t-1} pesco una osservazione casuale dalla poisson corrente
+      simulazioni[oss,2:ncol(simulazioni)] = cbind(yt1)
+    }
+    
+    
+    prev_nbinom = data.frame(Serie = nome_serie)
+    Metodo = 'NegBinom'
+    prev_nbinom = cbind(prev_nbinom, simulazioni$h, Metodo, test$vendite)
+    colnames(prev_nbinom)[c(2,4)] = c('h','vendite')
+    prev_nbinom = cbind(prev_nbinom, t(sapply(1:56, function(x) quantile(t(simulazioni)[2:ncol(simulazioni),x], tau))))
+    colnames(prev_nbinom)[5:ncol(prev_nbinom)] = sapply(tau, function(x) paste0('quant_', x))
+    
+    prev_nbinom$quant_1 = prev_nbinom$quant_0.99
+  }
+  write.csv(df_prev, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_lumpy_completo.csv', row.names = FALSE)#, append = T)
+  
+}
