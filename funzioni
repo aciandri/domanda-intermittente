@@ -1,0 +1,1052 @@
+#######################
+#### FUNZIONI TESI ####
+#######################
+
+## gestione valori mancanti nei prezzi
+NA_fun = function(data){
+  n_NA = sapply(data, function(col) sum(is.na(col)))
+  n_NA = sort(n_NA[n_NA > 0])
+  n_NA = data.frame(
+    variabile = names(n_NA),
+    freq_assoluta = as.numeric(n_NA),
+    freq_relativa = round(as.numeric(n_NA)/nrow(data), 4)
+  )
+  n_NA }
+
+## controllo che le date siano ordinate
+ordinati_x_data <- function(DF, date_column) {
+  if (!(date_column %in% colnames(DF))) {
+    stop("La colonna della data specificata non è presente nel dataset.")
+  }
+  dati_ordinati <- DF[order(DF[[date_column]]), ]
+  date_ordinate <- na.omit(dati_ordinati[[date_column]])
+  date_DS <- na.omit(DF[[date_column]])
+  if (all(date_ordinate==date_DS)) {
+    cat("Le osservazioni sono ordinate per data (a meno degli NA).\n")
+  } else {
+    cat("Le osservazioni NON sono ordinate per data (a meno degli NA).\n")
+  }
+}
+
+
+
+miss_date = function(df = dati, date = 'date', variabile = 'date'){
+  i = 1 # indicatore di riga
+  ind1 = c() # contiene l'ultima osservazione prima di NA quando dati problematici
+  ind2 = c() # contiene la prima osservazione prima di NA quando dati problematici
+  diff = c() # contiene le differenze tra le due pointer per dati problematici
+  n_na = c() # contiene il numero di missing tra le 2 pointer
+  var = c() # contiene i valori della variabile
+  risolto = c() # contiene T/F per verificare se il problema è stato risolto in automatico
+  
+  n2 = 0 # numero na risolti
+  id_data = which(colnames(df) == date)
+  id_var = which(colnames(df) == variabile)
+  
+  while (i <= nrow(df)){
+    # print(i)
+    pointer2 = i
+   # print(is.na(df[i,id_var]))
+    if(i == 1) pointer1 = i # prima riga pointer1 = 1
+    if( i != 1){
+      if(pointer1 == 1 & pointer2 == 2 & is.na(df[pointer1, id_var]) & !is.na(df[pointer2, id_var])){
+        ind1 = c(ind1, pointer1)
+        ind2 = c(ind2, pointer2)
+        #print(cbind(pointer1, dati$data[pointer1]))
+        #print(cbind(pointer2, dati$data[pointer2]))
+        diff = c(diff,df[pointer2, id_data]- df[pointer1, id_data])
+        n_na = c(n_na, pointer2-pointer1)
+        var = c(var, paste0(df[pointer1, id_var],'-', df[pointer2, id_var]))
+        risolto = c(risolto, T)
+      }
+      if(!is.na(df[i, id_var])) { pointer1 = i }# primo record diverso da NA => pointer1 = i
+      else {
+        j = 0 # numero di record dopo i che sono NA
+        while(is.na(df[i+j, id_var]) ) {
+          j = j+1 # quanti record ci sono dopo il primo NA
+         #print(j)
+        }
+        pointer2 = i+j # primo record diverso da NA dopo una serie di NA
+        if(is.na(df[pointer1, id_var])) {
+         #print(paste('pointer1:', pointer1))
+         #print(paste('pointer2:', pointer2))
+          #df[pointer1:pointer2, id_var] = df[pointer2, id_var] 
+          
+          ind1 = c(ind1, pointer1)
+          ind2 = c(ind2, pointer2)
+          #print(cbind(pointer1, dati$data[pointer1]))
+          #print(cbind(pointer2, dati$data[pointer2]))
+          diff = c(diff,df[pointer2, id_data]- df[pointer1, id_data])
+          n_na = c(n_na, pointer2-pointer1)
+          var = c(var, paste0(df[pointer1, id_var],'-', df[pointer2, id_var]))
+          risolto = c(risolto, T)
+          }
+        else{
+          if(df[pointer1, id_var] == df[pointer2, id_var] ) {
+            df[pointer1:pointer2, id_var] = df[pointer1, id_var] 
+            n2 = n2+1
+           #print(paste('risolto', pointer1, pointer2))
+
+
+          }
+          # se le due pointer (ultima data non NA prima degli NA e prima data non NA dopo la serie di NA) 
+          # sono uguali => le date mancanti nel mezzo saranno pari alle due pointer
+          else {
+            ind1 = c(ind1, pointer1)
+            ind2 = c(ind2, pointer2)
+            #print(cbind(pointer1, dati$data[pointer1]))
+            #print(cbind(pointer2, dati$data[pointer2]))
+            diff = c(diff,df[pointer2, id_data]- df[pointer1, id_data])
+            n_na = c(n_na, pointer2-pointer1)
+            var = c(var, paste0(df[pointer1, id_var],'-', df[pointer2, id_var]))
+            risolto = c(risolto, F)
+           #print(diff)
+          }
+        }
+      }
+    }
+    i = pointer2+1
+  }
+  return(data.frame(pointer1 = df[ind1,id_data ], pointer2 = df[ind2, id_data], num_NA = n_na, giorni = diff, Variabile = var, Risolto = risolto))
+  
+  
+}
+
+## Matrice diagonale ####
+is_diagonal <- function(matrice) {
+  diagonale_principale <- diag(matrice)  # Ottieni la diagonale principale
+  zeros_out_diagonal <- sum(matrice - diag(diagonale_principale)) == 0  # Controlla se gli elementi al di fuori della diagonale principale sono tutti uguali a zero
+  return(zeros_out_diagonal)
+}
+
+## Costanti ####
+costanti = function(data = dati, unici = 1, numero = F, cost = F){
+  n = 0
+  costant = c()
+  for (el in colnames(data)){
+    if (length(unique(data[,el])) <= unici){ 
+      if(cost == T)  data = data[,-which(colnames(data) == el)]
+      costant = c(costant, el)
+      n = n+1
+    } }
+ #print(n)
+  if(numero) return(n)
+  if(cost) return(data)
+  return(costant)
+}
+
+## SBC ####
+SBC_fun = function(dati, serie, grafico = F, unico = T, 
+                   categorie = data.frame(Serie = c(0), Categoria = c(0), ADI = c(0), CV2 = c(0))){
+  # dati deve avere in colonna una serie
+  
+  library(tsintermittent)
+  
+  p = idclass(dati, type = 'SBC')#, outplot = 'detail')
+  # valutazione SBC solo sul train o su tutte? Per essere corretti in previsione sarebbe
+  # meglio solo train e comunque non si perdono tante osservazioni
+  cv2 = p$cv2
+  adi = p$p
+  
+  if(grafico){
+    plot(log(cv2), log(adi), ylab ='ln(CV2)', xlab = 'ln(ADI)')
+    abline(h = log(1.32), col = 2)
+    abline(v = log(.49), col = 2)
+  }
+  
+  if(!unico){
+    cat = rep (NA, (ncol(dati)))
+    
+    cat[which(cv2 >= .49 & adi < 1.32)] = 'erratic' # 495
+    cat[which(cv2 >= .49  & adi  >= 1.32)] = 'lumpy' # 5682
+    cat[which(cv2 < .49  & adi< 1.32)] = 'smooth' # 975
+    cat[which(cv2 < .49  & adi >= 1.32)] = 'intermittent' # 21750
+    
+  }
+  if(unico) {
+    cat = ifelse((cv2 < .49  & adi >= 1.32), 'intermittent',
+                 ifelse((cv2 >= .49  & adi  >= 1.32), 'lumpy',
+                        ifelse((cv2 < .49  & adi< 1.32), 'smooth', 'erratic')))
+  }
+  
+  
+  categorie = rbind(categorie, c(serie, cat, round(adi, 2), round(cv2, 2)))
+  return(categorie)
+}
+
+
+## Creo mini datasets ####
+creo_mini = function (dati = dati, prezzi = prezzi1, sku = sku, identificativo, cartella = 'erratic'){
+  # guardo 1 sola serie
+  dati1 = dati[, c(1:13, identificativo)] 
+  #dati1$date = as.Date(dati1$date) # sennò è chr
+  sku1 = sku[which(sku$id == colnames(dati)[identificativo]),] 
+  prezzi2 = prezzi[ prezzi$store_id == sku1$store_id & prezzi$item_id == sku1$item_id,]
+  
+  dati1 = dati1[order(dati1$date),] # ordino i dati per data
+  nome_item = colnames(dati1)[identificativo]
+  dati1 = rename(dati1, vendite = colnames(dati1)[ncol(dati1)])
+  
+  ## Elimino gli 0 iniziali
+  inizio = min(dati1$date[which(dati1$vendite!= 0 )]) 
+  if(inizio != min(dati1$date)) dati1 = dati1[which(dati1$date == inizio):nrow(dati1),]
+  ts.plot(ts(dati1$vendite))
+  
+  ## Aggiungo le info sul prezzo
+  #ordinati_x_data(prezzi1, 'wm_yr_wk')
+  dati1 = left_join(dati1, prezzi2[,3:ncol(prezzi2)], by = 'wm_yr_wk')
+  
+  ## controllo
+  if(dim(NA_fun(dati1))[1] > 0 | min(dati1$relative_price_cat) < 0 |min(dati1$relative_price_dep)<0){
+   #print(identificativo)
+    break
+  }
+  
+  mini = cbind(dati1, sku1[,c('cat_id', 'state_id', 'SBC')])
+  
+  ### Creo variabili ####
+  
+  #### proportion of the day in a year ####
+  # ordinati_x_data(mini, 'date') # non sono ordinati per data
+  mini$prop_year = -1
+  for(el in unique(mini$year)){
+    
+    start = as.Date(paste0(el, '-01-01'))
+    durata = as.numeric(difftime(as.Date(paste0(el, '-12-31')) , start, units = 'days')) # n. gg in un anno
+    tmp = which(mini$year == el)
+    
+    mini$prop_year[tmp] = ifelse(mini$date[tmp] == start, 0,  
+                                 as.numeric(difftime(mini$date[tmp], start, units = 'days')) / durata)
+    # calcolo prop_days come la differenza tra la data della vendita e il primo giorno dell'anno fratto la durata dell'anno
+  }
+  
+  #### the proportion of the day in a week ####
+  proporzioni_giorni <- c(1/7, 2/7, 3/7, 4/7, 5/7, 6/7, 1)
+  indici_giorni <- match(mini$weekday, c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'))
+  settimana <- proporzioni_giorni[indici_giorni]
+  mini$prop_week = settimana
+  
+  ######
+  #### Vendite medie ####
+  mini$media_28 = 0
+  #ordinati_x_data(mini, 'date')
+  
+  for(i in 2:nrow(mini)){
+    # se tra l'osservazione i e l'inizio non intercorrono almeno 28 giorni, faccio la media di tutto.
+    if((difftime(mini$date[i], inizio, units = 'days')) < 29) { mini$media_28[i] = mean(mini$vendite[1:(i-1)]) }
+    
+    # altrimenti, faccio la media solo degli ultimi 28 giorni
+    else{ mini$media_28[i]= mean(mini$vendite[(i-28):(i-1)])  }
+  }
+  
+  mini$media_7 = 0
+  
+  for(i in 2:nrow(mini)){
+    # se tra l'osservazione i e l'inizio non intercorrono almeno 28 giorni, faccio la media di tutto.
+    if((difftime(mini$date[i], inizio, units = 'days')) < 8) { mini$media_7[i] = mean(mini$vendite[1:(i-1)]) }
+    
+    # altrimenti, faccio la media solo degli ultimi 28 giorni
+    else{ mini$media_7[i]= mean(mini$vendite[(i-7):(i-1)])  }
+  }
+  
+  #### LightGBM e LSTM ####
+  
+  # calcolo prop_days come la differenza tra la data della vendita e il primo giorno dell'anno fratto la durata dell'anno
+  mini[, 'dist_first_sale'] = as.numeric(difftime(mini$date, inizio, units = 'days'))
+  
+  # distances between the last two positive sales
+  mini$last_sales_bet = 0
+  pointer1 = pointer2 = 1
+  
+  for(i in 2:nrow(mini)){
+    mini$last_sales_bet[i] = as.numeric(difftime(mini$date[pointer2], mini$date[pointer1], units = 'days'))
+    
+    if(mini$vendite[i] > 0){ # se la vendita in questione 
+      pointer1 = pointer2
+      pointer2 = i
+    }
+  }
+  
+  # distances from last positive sale
+  mini$dist_last_sale = 0
+  pointer1 = 1
+  
+  
+  for(i in 2:nrow(mini)){
+    mini$dist_last_sale[i] = difftime(mini$date[i], mini$date[pointer1], units = 'days')
+    if(mini$vendite[i] > 0) pointer1 = i
+  }
+  
+  ## ALTRE OPERAZIONI #####
+  ## Elimino le variabili che non mi servono
+  mini$wm_yr_wk = mini$month = mini$year = NULL
+  
+ #print(summary(mini))
+ #print(identificativo)
+  if(dim(NA_fun(mini)) [1]> 0) {
+   #print('Problema!')
+    break
+  }
+  if(min(mini$dist_last_sale) < 0 |
+     min(mini$last_sales_bet) < 0 |
+     min(mini$media_7) < 0 |
+     min(mini$media_28) <0 ){
+    print('Problema!')
+    break
+  }
+  
+  nome_file = paste0('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/', cartella, '/', mini$SBC[1],'.csv')
+  write.csv(mini, nome_file , row.names = FALSE)
+}
+
+## Regression quantile jittered: T(Z,tau) ####
+T_ztau = function(Z = Z, tau = tau){
+  if(length(tau) == 1) return( ifelse ( Z > tau, log(Z - tau), log(10^(-5))))
+  
+  t = data.frame(z = Z) # data frame dove ogni colonna è la trasformazione di Z per ogni quantile in esame
+  #print(is.data.frame(t))
+  
+  for(el in tau){
+    #print(el)
+    col = paste0('quant_', el, collapse = NULL)
+    # se la funzione produce NA (ossia u = 0 e Y = 0), allora si pone a 0, altrimenti si segue la formula per la trasformazione di Z
+    t[,col] = ifelse ( Z == el , 0, ifelse(Z > el, log(Z - el), log(10^(-5))))
+    #print(str(t))
+  }
+  
+  return(t)
+}
+
+## Funzione per regressione quantile per dati di conteggio (Machado & Silva) con funzioni GAM come kernel integrato ####
+creo_z = function(df = dati, y = 'y', seme = 1){
+  set.seed(seme)
+  u = runif(dim(df)[1], 0, .9999) # jittering
+  Z = df[,y] + u # variabile continua da quella di conteggio
+}
+count_quantile = function( df = dati, y = 'y', x = colnames(dati)[-idY], quantili = tau,
+                           seme = 1, test = NULL, flag = F, mod_gam = mod_gam){
+  # idY = which(colnames(dati) == 'y')
+  # x = covariate da usare nel modello
+  # quantili = quali quantili vogliamo guardare
+  # kernel = funzioni del kernel integrato
+  # flag = T -> dò il test e faccio previsione
+  
+  ## Creo Z = Y + u
+  Z = creo_z(df = df, y = y, seme = seme)
+  if(flag) {
+    Z_test = creo_z(test, y = y, seme = seme)
+    predictions = list()
+  }
+  
+  ## Inizializzo le liste in cui andranno i modelli di regressione quantile (forse inutile) e le previsioni per ogni quantile
+  quantile_fits <- list() # contiene tutti i risultati
+  predictions = list()
+  
+  ## Cambio i nomi delle colonne delle covariate (essendo prese dagli effetti del GAM non vanno bene per la formula del QR)
+  for(el in colnames(x)){
+   print(el)
+   print(strsplit(el,'\\(')[[1]][2])
+    if(!is.na(strsplit(el,'\\(')[[1]][2])) colnames(x)[which(colnames(x) == el)] =  strsplit(strsplit(el,'\\(')[[1]][2], '\\)')
+  }
+  
+  # per ogni quantile, calcolo la trasformazione T, la regressione quantile e le previsioni
+  for(el in tau){ 
+    
+    #print(el)
+    
+    ## T(Z, tau)
+    trasformazione = ifelse( Z > el, log(Z-el), log(10^(-5)))
+    
+    #trasformazione[Z > el] = log( Z[Z > el] - el )
+    
+    ## Nuovo dataset da usare nella regressione quantile (t(z,tau) e le funzioni GAM)
+    new = data.frame(new = trasformazione)
+    new = cbind(new, x)
+    
+    ## Regressione quantile
+    formula = as.formula(paste0('new ~', paste0(colnames(x), collapse = '+')))
+   #print(formula)
+    
+    Q_Tztau = rq(formula,tau = el, data = new) # regressione quantile su trasformazione
+    
+    quantile_fits[[as.character(el)]] <- Q_Tztau
+    
+    #print('ciao')
+    
+    ## Faccio previsione
+    if(flag){
+      
+      ## Creo T(Z, tau) per il test set
+      trasformazione_test = ifelse( Z_test > el, log(Z_test-el), log(10^(-5)))
+      
+      # trasformata nel test
+      #trasformazione_test[Z_test > el] = log( Z_test[Z_test > el] - el )
+      #print('trasformata ok')
+      
+      ## Creo i nuovi dati per la regressione quantile e modifico i nomi
+      gam_effects_test <- data.frame(predict(mod_gam, newdata = test, type = "terms"))
+      gam_effects_test$new = trasformazione_test
+      #print(colnames(gam_effects_test))
+      
+      for(nome in colnames(gam_effects_test)){
+       #print(nome)
+       #print(strsplit(nome,'\\.')[[1]][2])
+        if(!is.na(strsplit(nome,'\\.')[[1]][2])) colnames(gam_effects_test)[which(colnames(gam_effects_test) == nome)] =  strsplit(nome,'\\.')[[1]][2]
+      }
+      #print('nomi test')
+      #print(colnames(gam_effects_test))
+      
+      pred = predict(Q_Tztau, gam_effects_test) # previsione per il quantile el per y
+      #print('pred ok')
+      #print(el)
+     #print(str(pred))
+      
+
+      predictions[[as.character(el)]] <- pred
+    }
+  }
+  if(!flag) return(quantile_fits)
+  return(predictions)
+}
+
+
+count_quantile_avg_jittering = function( df = dati, y = 'y', x = colnames(dati)[-idY], quantili = tau, m = 1,
+                           seme = seq(1, m), test = NULL, flag = F, mod_gam = mod_gam){
+  # idY = which(colnames(dati) == 'y')
+  # x = covariate da usare nel modello
+  # quantili = quali quantili vogliamo guardare
+  # kernel = funzioni del kernel integrato
+  # flag = T -> dò il test e faccio previsione
+  # m > 1 -> average jittering (minimo 100)
+  
+  ## Inizializzo le liste in cui andranno i modelli di regressione quantile (forse inutile) e le previsioni per ogni quantile
+  quantile_fits <- list() # contiene tutti i modelli
+  predictions = list() # contiene le previsioni
+  #modello = list() # contiene i coefficienti del modello
+  if(flag)   Z_test =creo_z(df = test, y = y, seme = seme[1]) 
+  
+  
+  ## Cambio i nomi delle colonne delle covariate (essendo prese dagli effetti del GAM non vanno bene per la formula del QR)
+  for(col in colnames(x)){
+    #print(el)
+    #print(strsplit(col,'\\(')[[1]][2])
+    if(!is.na(strsplit(col,'\\(')[[1]][2])) colnames(x)[which(colnames(x) == col)] =  strsplit(strsplit(col,'\\(')[[1]][2], '\\)')
+  }
+  #print(colnames(x))
+  formula = as.formula(paste0('new ~', paste0(colnames(x), collapse = '+'))) # formula per la regressione quantile
+  
+  for(i in 1:m){
+    # Creo Z = Y + U
+    ## sapply fino a quantile_fits (!flag)
+    Z =  creo_z(df = df, y = y, seme = seme[i])
+   #print(paste0('m: ', i))
+    
+    # per ogni quantile, calcolo la trasformazione T, la regressione quantile e le previsioni
+    for(el in tau){ 
+      
+      ## T(Z, tau)
+      trasformazione = ifelse( Z > el, log(Z-el), log(10^(-5)))
+      
+      #trasformazione[Z > el] = log( Z[Z > el] - el )
+      
+      ## Nuovo dataset da usare nella regressione quantile (t(z,tau) e le funzioni GAM)
+      new = data.frame(new = trasformazione)
+      new = cbind(new, x)
+      
+      ## Regressione quantile
+      
+      Q_Tztau = rq(formula,tau = el, data = new) # regressione quantile su trasformazione
+
+      if(as.character(el) %in% names(quantile_fits)){ 
+        for(j in 1:length(quantile_fits[[as.character(el)]])){
+          #print(j)
+          
+          quantile_fits[[as.character(el)]][j] = quantile_fits[[as.character(el)]][j]+ coef(Q_Tztau)[j]
+        }
+        
+      }
+      else{ 
+        quantile_fits[[as.character(el)]] <- coef(Q_Tztau) 
+      }
+    }
+  }
+  #str(Q_Tztau)
+  
+  
+  #print(paste0('quantile fit iniziali: ',quantile_fits))
+  quantile_fits = as.data.frame(sapply(quantile_fits , function(x) x/m))
+  #print(paste0('coefficienti medi: ',str(quantile_fits)))
+  
+  if(!flag) return(quantile_fits)
+  # previsione ####
+  for(el in tau){
+   #print(paste0('tau: ', el))
+    gam_effects_test <- data.frame(predict(mod_gam, newdata = test, type = "terms"))
+   #print('ok')
+    gam_effects_test$new = Z_test
+
+    
+    for(nome in colnames(gam_effects_test)){
+      if(!is.na(strsplit(nome,'\\.')[[1]][2])) colnames(gam_effects_test)[which(colnames(gam_effects_test) == nome)] =  strsplit(nome,'\\.')[[1]][2]
+    }
+
+    
+    Q_Tztau$coefficients = quantile_fits[,as.character(el)]
+    #print(coef(Q_Tztau))
+    pred = predict(Q_Tztau, gam_effects_test) # previsione per il quantile el per y
+    
+    predictions[[as.character(el)]] = pred
+  }
+  
+  return(predictions)
+}
+
+## iETS ####
+iETS_quant = function(train = train_ts, tipo = c("o", "inverse-odds-ratio", 'direct', 'general'), 
+                       prev_arima = prev_arima){
+  library(smooth)
+  mod_iets = adam(train, "MNN", occurrence= tipo, oesmodel="ZZN", h=28, holdout=TRUE, silent=FALSE,
+                  distribution = "dgamma") # dava MMN e MMN. Il paper diceva MNN
+  
+  fore_iets = forecast(mod_iets, h = 56, interval = 'simulated', level = seq(.02, .98, by = .02))#seq(.01,.99, by = .01))
+  str(fore_iets)
+  #fore_iets = data.frame(fore_iets)
+  str(fore_iets)
+  
+  fore_iets_df = data.frame(fore_iets$lower)
+  fore_iets_df = fore_iets_df[, ncol(fore_iets_df):1]
+  fore_iets_df =cbind(fore_iets_df, data.frame(fore_iets$upper))
+  str(fore_iets_df)
+  stringhe= strsplit(colnames(fore_iets_df), '\\.')
+  
+  for(i in 1:length(stringhe)){
+    el = stringhe[[i]]
+   #print(el[4])
+    if(as.numeric(el[4]) < 10) colnames(fore_iets_df)[i] = paste0('quant_0.0', el[4])
+    else{ colnames(fore_iets_df)[i] = paste0('quant_0.', el[4]) }
+  }
+  
+  
+  
+  
+  prev_iets = prev_arima
+  prev_iets$Metodo = mod_iets$model
+  for(quantile in 2:ncol(fore_iets_df)){
+    prev_iets[,quantile+3] = ceiling(fore_iets_df[,quantile])
+  }
+  str(prev_iets)
+  prev_iets$quant_1 = prev_iets$quant_0.99
+  
+  return(prev_iets)
+}
+
+## WSS ####
+
+boot_wss = function(train_y = train$vendite, test_y = test$vendite, jitter = T,
+                    seme = 1, tau = tau, rep = 1000){
+  
+  vendite01_train = ifelse(train_y ==0 , 0 , 1)
+  
+  n00 = n10 = n01 = n11 = n0 = n1 = 0
+  for(i in 1:(length(vendite01_train)-1)){
+    
+    if(vendite01_train[i] == 0){ # ieri = 0
+      n0 = n0+1
+      
+      if(vendite01_train[i+1] == 0) { n00 = n00 +1 }
+      else{ n01 = n01 +1 }
+    }
+    
+    else{ # ieri = 1
+      n1 = n1+1
+      
+      if(vendite01_train[i+1] == 0) { n10 = n10 +1 }
+      else{ n11 = n11 +1 }
+    }
+  }
+  
+  transizione = data.frame(Ieri = c(0,0,1,1), Oggi = c(0,1,0,1), Prob = c(n00/n0, n01/n0, n10/n1, n11/ n1))
+  
+  # LTD = c()
+  previsioni = data.frame(vendite = test_y)
+  for( s in 1:rep){
+   #print(s)
+    set.seed(s)
+    seme = sample(1:10000, 1)
+    
+    ## Step2: generare una sequenza di valori 0 e non 0 durante l'orizzonte temporale di previsione, 
+    # condizionatamente all'ultima domanda osservata
+    occurrence = c()
+    last = vendite01_train[length(vendite01_train)] # se è la prima iterazione guardo l'ultima oss
+    
+    for ( i in 1:nrow(test)){ # per h
+      if(i > 1) last = occurrence[length(occurrence)] # guardo la simulazione precedente
+      
+      sim_test_wss = transizione$Prob[transizione$Ieri == last & transizione$Oggi == 1] # prob domanda dato ieri
+      
+      set.seed(seme)
+      rand = runif(1,0,1) # numero casuale U[0,1]
+      seme = seme + 1
+      
+      if(rand < sim_test_wss) { occurrence = c(occurrence, 1) }
+      else{  occurrence = c(occurrence, 0) }
+      
+    }
+    
+    # print(occurrence)
+    ## Step3: Sostituzione dei marker di stato non 0 con un valore numerico campionato 
+    # casualmente con reinserimento dall'insieme di domande non 0 osservate.
+    set.seed(s*10)
+    seme = sample(1:10000, 1)
+    
+    for(i in which(occurrence == 1)){
+      set.seed(seme)
+      occurrence[i] = sample(train_y[train_y != 0],1) # campiono un valore casuale da y
+      seme = seme +1
+      
+      # Step4: jittering
+      if(jitter){
+        
+        set.seed(seme)
+        Z = rnorm(1)
+        
+        J = 1 + floor(sqrt(occurrence[i]) * Z) # jittered
+        
+        if(J >= 0) occurrence[i ] = J
+      }
+    }
+    #print(paste('jittered' , occurrence))
+    
+    # LTD = c(LTD, sum(occurrence))
+    previsioni[, paste0('camp_', s)] = occurrence
+    
+  }
+  
+  ## Ricavo i quantili per confronto con altri metodi
+  prev_wss = data.frame(vendite = test_y[1])
+  F_hat = ecdf(t(previsioni)[2:ncol(previsioni), 1])
+  #print('ok1')
+  q_tau = round(quantile(F_hat, probs = seq(.01, .99, .01)))
+  #print('ok')
+  prev_wss = cbind(prev_wss, t(q_tau))
+  
+  for(ossne in 2:length(test_y)){
+    F_hat = ecdf(t(previsioni)[2:ncol(previsioni), ossne])
+    #plot(F_hat, main = ossne)
+    
+    q_tau = round(quantile(F_hat, probs = seq(.01, .99, .01)))
+    #print(q_tau)
+    prev_wss[ossne, ] = c(test_y[ossne], t(q_tau))
+  }
+  return(prev_wss)
+}
+
+## Poisson e BN ####
+pois_fun_iniz = function(parametri){
+  alpha = parametri[1]
+  phi = parametri[2]
+  mu = parametri[3]
+  mu1 = train_ts[1]
+  
+  if(alpha + phi > 1 || alpha <= 0 || phi <= 0 || mu <= 0) return (NA)
+  sum(dpois(train_ts[2:length(train_ts)], (1-alpha-phi)*mu +phi * mu1 + alpha*lag(train$vendite)[2:length(train_ts)]
+            , log = T))
+}
+
+bn_fun_iniz = function(parametri){
+  alpha = parametri[1]
+  phi = parametri[2]
+  b = parametri[3]
+  mu = parametri[4]
+  mu1 = train_ts[1]
+  at = ((1-alpha-phi)*mu +phi * mu1 + alpha*(train$vendite)[1])*b
+  
+  if(alpha + phi >= 1 || alpha <= 0 || phi <= 0 || mu <= 0 || b <= 0 || at <= 0) return (NA)
+  sum(dnbinom(train_ts[2:length(train_ts)], at, b/(1+b), log = T))
+}
+
+
+## rPIT ####
+rPIT.NO = function (quantili = prev_gamqr_co[, 3:(ncol(prev_gamqr_co))], y = 'vendite', 
+                 seme = 1, metodo = 'GAM-QR', n = 30, plotta = F){
+  # quantili = df con colnames=c(y, quantili)
+  # n = numero di osservazioni da campionare per ottenere la rPIT per ogni t
+  
+  #library(dplyr)
+  
+  pt = c() # contiene pt campionati da U[F(y-1), F(y)]
+  
+  for(i in 1:nrow(quantili)){ # per ogni punto nel tempo futuro di interesse
+    F_hat = ecdf(t(quantili %>% select(-vendite))[, i])
+    #print(F_hat(quantili[i, y]))
+    if(plotta) plot(F_hat)
+    
+    if(F_hat(quantili[i, y]-1) != F_hat(quantili[i, y])){ # se OK: normale procedura
+      set.seed(seme)
+      pt = c(pt, runif(n, F_hat(quantili[i, y]-1), F_hat(quantili[i, y]))) # rPIT
+    }
+    else{ # jitter per casi in cui F(y-1) = F(y)
+      jitter = 1/length(quantili[,y])
+      set.seed(seme)
+      F_y1 = F_hat(quantili[i, y]-1) + runif(jitter^(-1), 0, jitter)      
+      set.seed(seme+1)
+      F_y2 = F_hat(quantili[i, y]) + runif(jitter^(-1), 0, jitter)
+      
+      pt = c(pt, runif(n, F_y1,F_y2)) # rPIT
+    }
+  }
+  #hist(pt, main = paste0('rPIT - ', metodo), xlab = 'rPIT')
+  
+  ## KS test
+  D = ks.test(quantili[,y], F_hat)
+  print(D$statistic)
+  
+  grafico = ggplot(data.frame(pt =pt), aes(x=pt, y = after_stat(density))) + geom_histogram(bins = 20, color = 'black') +
+    #theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
+    geom_hline(yintercept = 1, color = 'navyblue', linetype = 'dashed', size = .6) +
+    
+    xlab('rPIT') + ylab('Densità')+
+    labs(title=paste0(metodo, ': D = ', round(D$statistic, 4))) + 
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  return(grafico)
+}
+
+
+rPIT = function (quantili = prev_gamqr_co[, 3:(ncol(prev_gamqr_co))], y = 'vendite', 
+                 metodo = 'GAM-QR', n = 30, plotta = F){
+  # quantili = df con colnames=c(y, quantili)
+  # n = numero di osservazioni da campionare per ottenere la rPIT per ogni t
+  
+  #library(dplyr)
+  
+  pt = c() # contiene pt campionati da U[F(y-1), F(y)]
+  jitter = .25
+  
+  
+  for(i in 1:nrow(quantili)){ # per ogni punto nel tempo futuro di interesse
+    seme = i
+    #print(seme)
+    F_hat = ecdf(t(quantili[,2:ncol(quantili)])[, i])
+    #print(F_hat(quantili[i, y]))
+    if(plotta) plot(F_hat)
+    
+    F1 = F_hat(quantili[i, y]-1)
+    F2 =  F_hat(quantili[i, y])
+    
+    if(F1 != F2){
+      set.seed(seme)
+      pt = c(pt, runif(n, F1, F2)) # rPIT
+    } else {
+      set.seed(seme)
+      F_y1 = F1 + runif(1, 0, jitter) 
+      set.seed(seme+10)
+      F_y2 = F2 + runif(1, 0, jitter)
+      #print(F_y1)
+      #print(F_y2)
+      set.seed(seme+5)
+      pt <- c(pt, runif(1, min(F_y1,F_y2), max(F_y1, F_y2)))
+    }
+  }
+  we <- pt >= 1 # Potremmo aver ottenuto valori >= 1.
+  if (any(we)) {
+    set.seed(seme)
+    pt[we] <- 1 - runif(sum(we),0,jitter)
+  }
+  
+  #hist(pt, main = paste0('rPIT - ', metodo), xlab = 'rPIT')
+  
+  ## KS test
+  D = "ks.test(pt, 'punif')
+  print(D$statistic)"
+  
+  grafico =" ggplot(data.frame(pt =pt), aes(x=pt, y = after_stat(density))) + geom_histogram(bins = 20, color = 'black') +
+    #theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
+    geom_hline(yintercept = 1, color = 'navyblue', linetype = 'dashed', size = .6) +
+    
+    xlab('rPIT') + ylab('Densità')+
+    labs(title=paste0(metodo, ': D = ', round(D$statistic, 4))) + 
+    theme(plot.title = element_text(hjust = 0.5))
+  "
+  return(pt)
+  #return(grafico)
+}
+
+## log score ####
+NO ="log_score = function(df_previsto, y){
+  # df_previsto = dataset dove ogni riga è un'osservazione e ogni variabile è un quantile (vendite, quantili)
+  # y è un vettore con i valori osservati
+  log_score = 0
+  
+  for(i in 1:length(y)){
+    #print(i)
+    distrib = prop.table(table(t(df_previsto)[,i])) # probabilità dei valori
+    prev = ifelse( y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0) # probabilità di prevedere il vero valore
+    #print(ifelse( prev > 0, log(prev), 1e-5))
+    log_score = log_score + ifelse( prev > 0, log(prev), 1e-5) #/ nrow(test) # log score
+  }
+  return(log_score/length(y))
+}"
+
+log_score1 = function(df_previsto, y, h =28){
+  # df_previsto = dataset dove ogni riga è un'osservazione e ogni variabile è un quantile (vendite, quantili)
+  # y è un vettore con i valori osservati
+  punteggio = c()
+  n = 1
+  
+  for(i in 1:length(y)){
+    #print(i)
+    if(n == 1) score = 0
+    
+    distrib = prop.table(table(t(df_previsto)[,i])) # probabilità dei valori
+    prev = ifelse( y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0) # probabilità di prevedere il vero valore
+    #print(ifelse( prev > 0, log(prev), 1e-5))
+    score = score + ifelse( prev > 0, log(prev), log(1e-5)) #/ nrow(test) # log score
+    if(n == 28) {
+      punteggio = c(punteggio, score/28)
+      n = 0
+    }
+    n = n+1
+  }
+  return(mean(punteggio))
+}
+
+log_score_comb = function(df_previsto, y, h =28){
+  # df_previsto = dataset dove ogni riga è un'osservazione e ogni variabile è un quantile (vendite, quantili)
+  # y è un vettore con i valori osservati
+  punteggio = c()
+  score =0 
+  #prva = c()
+  
+  for(i in 1:length(y)){
+    #print(i)
+    
+    distrib = prop.table(table(t(df_previsto)[,i])) # probabilità dei valori
+    prev = ifelse( y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0) # probabilità di prevedere il vero valore
+    #print(ifelse( prev > 0, log(prev), 1e-5))
+    score = score + ifelse( prev > 0, log(prev), log(1e-5)) #/ nrow(test) # log score
+    #prva = c(prva, nomi[i])
+    if(i %% h ==0 ) {
+      #print(table(prva))
+      punteggio = c(punteggio, score/h)
+      score =0 
+      #prva = c()
+    }
+  }
+  return(punteggio)
+}
+
+
+
+
+
+## brier score ####
+
+NO ='brier_score = function(df_previsto, y){
+  brier = 0
+
+  for(i in 1:length(y)){
+    distrib = prop.table(table(t(df_previsto)[,i])) # probabilità dei valori
+    prev = ifelse( y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0) # probabilità di prevedere il vero valore
+
+    brier = brier -2*prev + sum(distrib^2) # somma dei punteggi di brier
+    #print(brier)
+  }
+  return(brier/length(y))
+}'
+
+brier_score = function(df_previsto, y, h = 28){
+  brier = c()
+  score =0 
+  
+  for(i in 1:length(y)){
+    
+    distrib = prop.table(table(t(df_previsto)[,i])) # probabilità dei valori
+    #print(distrib)
+    prev = ifelse( y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0) # probabilità di prevedere il vero valore
+    
+    score = score -2*prev + sum(distrib^2) # somma dei punteggi di brier
+    #print(brier)
+    
+    if(i/h == 1){
+      brier = c(brier, score / h)
+      score = 0
+    }
+  }
+  return(brier)
+  return(mean(brier))
+}
+
+## DRPS score ####
+drps_score = function(df_previsto, y){
+  drps = 0
+  massimo = max(y)
+  
+  for(i in 1:length(y)){ # per ogni punto nel tempo futuro di interesse
+    F_hat = ecdf(t(df_previsto)[, i])
+    #print(i)
+    
+      drps = drps + sum(sapply(0:massimo, function(k) (F_hat(k) - ifelse(y[i] <= k, 1, 0))^2))
+  }
+  return(drps/length(y))
+}
+
+
+## valutazione sharpness ####
+sharp1 = function(modello, df_previsto, y,
+                 matr.sharp = data.frame(Modello = c(0), Logaritmico = c(0), DRPS = c(0), Brier = c(0))){
+  riga = 1
+  if (matr.sharp[1,1] != 0){ riga = dim(matr.sharp)[1]+1  }
+  matr.sharp[riga,] = c(modello, 
+                     round(-log_score(df_previsto, y),4),
+                     round(drps_score(df_previsto, y), 4), 
+                     round(brier_score(df_previsto, y),4))
+  return(matr.sharp)
+}
+
+### Più veloce!!!
+sharp = function(modello, df_previsto, y,
+                 matr.sharp = data.frame(Modello = c(0), Logaritmico = c(0), DRPS = c(0), Brier = c(0)),  h = 28){
+  # df_previsto = contiene solo le previsioni
+  # y = test$y
+  
+  ## segno la riga da aggiungere alla matrice
+  riga = 1
+  if (matr.sharp[1,1] != 0){ riga = dim(matr.sharp)[1]+1  }
+  
+  ## inizializzo gli score
+  logaritmico = c()
+  brier = c()
+  drps = c()
+  
+  score_log = score_brier =score_drps = 0
+  massimo = max(y)
+  
+  ## per drps
+  #massimo = max(y)
+  
+  ## calcolo lo score per ogni h = 1,..., 28 e faccio la media dentro i c()
+  for(i in 1:length(y)){
+    distrib = prop.table(table(t(df_previsto)[,i])) # probabilità dei valori
+    prev = ifelse( y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0)
+    #print(ifelse( prev > 0, log(prev), log(1e-5)))
+    
+    score_log = score_log + ifelse( prev > 0, log(prev), log(1e-5) )#/ nrow(test) # log score
+    score_brier = score_brier -2*prev + sum(distrib^2) 
+    
+    F_hat = ecdf(t(df_previsto)[, i])
+    score_drps = score_drps + sum(sapply(0:massimo, function(k) (F_hat(k) - ifelse(y[i] <= k, 1, 0))^2))
+    
+    ## se son passati 28 periodi, faccio la media di ogni punteggio
+    if(i%%h  == 0) {
+      logaritmico = c(logaritmico, score_log/h)
+      brier = c(brier, score_brier/h)
+      drps = c(drps, score_drps/h)      #print(punteggio)
+      score_drps = score_brier = score_log = 0
+      
+    }
+  }
+  
+  matr.sharp[riga,] = c(modello, 
+                        round(-mean(logaritmico),4),
+                        round(mean(drps), 4), 
+                        round(mean(brier),4))
+  return(matr.sharp)
+}
+
+## valutazione costo inventario ####
+
+fun.costi = function( metodo, df_previsto, y, par = F,  
+                                matr.inv = data.frame(Metodo = c(0), 
+                                                      Livello = c(0), 
+                                                      Stock = c(0), 
+                                                      LostSales =c(0),
+                                                      CostoTotale = c(0)),
+                     costo =  rbind(c(1,4), c(1,9), c(1,19))){
+  # costo = rbind(c(1,4), c(1,9), c(1,19))
+
+  livello = costo[,2] / rowSums(costo)
+  
+  n = 1
+  if (matr.inv[1,1] != 0){ n = dim(matr.inv)[1]+1  }
+  
+  for(lev in livello){
+    stock = 0
+    lostsales = 0
+    costo_tot = 0
+    
+    for(i in 1:length(y)){
+      if(par) q_tau =  qnbinom(lev, size = 10*df_previsto[i], mu = df_previsto[i])
+
+      if(!par){
+        F_hat = ecdf(t(df_previsto)[2:ncol(df_previsto), i])
+        q_tau = round(quantile(F_hat, probs = lev))
+        }  
+      stock = stock + max(0, q_tau-y[i])
+      lostsales = lostsales + max(0, y[i]-q_tau)
+      #print(max(0, y[i]-q_tau))
+    }
+    stock = stock / length(y)
+    lostsales = lostsales/length(y)
+    matr.inv[n,] = c(metodo, lev, 
+                     round(stock, 4),
+                     round(lostsales, 4),
+                     round( costo[which(livello == lev),1]*stock + costo[which(livello == lev),2]* lostsales , 4))
+    n = n+1
+  }
+  
+  return (matr.inv)
+}
+
+## Trade off curves ####
+
+to_curves = function(metodo,df_previsto, y,  plot = F, par = F,
+                     matr.cost = data.frame(
+                       Metodo = c(0), Livello = c(0), Investment= c(0), Lostsales = c(0), CSL_deviation = c(0), Costo = c(0)
+                     ),
+                     costo =  rbind(c(1,4), c(1,9), c(1,19))){
+  # costo = rbind(c(1,4), c(1,9), c(1,19))
+  
+  livello = costo[,2] / rowSums(costo)
+  
+  n = 1
+  if (matr.cost[1,1] != 0){ n = dim(matr.cost)[1]+1  }
+  
+  for(lev in livello){
+    stock = 0
+    lostsales = 0
+    
+    for(i in 1:length(y)){
+      if(!par){
+        F_hat = ecdf(t(df_previsto)[2:ncol(df_previsto), i])
+        q_tau = round(quantile(F_hat, probs = lev))
+      }
+      
+      if(par){
+        q_tau =  qnbinom(lev, size = 10*df_previsto[i], mu = df_previsto[i])
+      }
+      
+      stock = stock + max(0, q_tau-y[i])
+      lostsales = lostsales + max(0, y[i]-q_tau) #Somma di vendite perse in tutti gli orizzonti. Media da aggiungere tra SKU
+      
+    }
+    
+    stock = stock / length(y) # investimento
+    CSL_dev = sum(y) / (sum(y) + lostsales/length(y)) - lev # CSL deviation
+    
+    matr.cost[n,] = c(metodo, lev, 
+                      round(stock, 4),
+                      round(lostsales, 4),
+                      round( CSL_dev, 4),
+                      round( (costo[which(livello == lev),1]*stock + costo[which(livello == lev),2]* lostsales)/ sum(y) , 4))
+    n = n+1
+    
+  }
+  if(!plot) return(matr.cost)
+  
+  inv_dev = ggplot(matr.cost, aes(x = Investment, y = CSL_deviation)) + geom_line() + geom_point()
+  inv_sales = ggplot(matr.cost, aes(x = Investment, y = Lostsales)) + geom_line() + geom_point()
+  sales_dev = ggplot(matr.cost, aes(x = Lostsales, y = CSL_deviation)) + geom_line() + geom_point()
+  gridExtra::grid.arrange(inv_dev,inv_sales, sales_dev, nrow = 1)
+  
+}
