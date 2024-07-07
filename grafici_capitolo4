@@ -1,0 +1,117 @@
+params_neg_binom <- function(mean, p) { # calcolo il valore di n (tempo variante) in modo da avere una certa media
+  n = mean * p/(1-p)
+  
+  return(round(n))
+}
+
+
+
+pp = sample(0:4, 10000, replace = T)
+
+
+## rPIT ok
+veri = c()
+
+for(i in 1:10000){
+  veri = c(veri, rpois(1, (pp[i]+1)))
+}
+
+pred = matrix(NA, nrow = 99, ncol = 10000)
+for(colonne in 1:ncol(pred)){
+  pred[,colonne] =  qpois(seq(.01,.99, .01), (pp[i]+1))
+}
+
+## cambio la somma di pp[i] per ottenere over o under prediction
+veri = c()
+
+for(i in 1:10000){
+  veri = c(veri, rnbinom(1, (pp[i]+1), .5))
+}
+
+pred = matrix(NA, nrow = 99, ncol = 10000)
+for(colonne in 1:ncol(pred)){
+  pred[1:(nrow(pred)),colonne] = qnbinom(seq(.01,.99, .01), (pp[colonne]+5), .5)
+}
+
+
+## overdispersion
+veri = c()
+
+for(i in 1:10000){
+  veri = c(veri, rpois(1, (pp[i]+1)))
+}
+
+pred = matrix(NA, nrow = 99, ncol = 10000)
+for(colonne in 1:ncol(pred)){
+  at = params_neg_binom(pp[colonne]+1, .3)# b = 1 e media uguale a veri
+  
+  pred[,colonne] = qnbinom(seq(.01,.99, .01), size = at, prob =.3)  # la media è pari a n, dato che (1-.5)/.5 = 1
+}
+
+## underdispersion
+veri = c()
+
+for(i in 1:10000){
+  at = params_neg_binom(pp[colonne]+1, .3)# b = 1 e media uguale a veri
+  
+  veri = c(veri,  rnbinom(1, size = at, prob =.3) ) # la media è pari a n, dato che (1-.5)/.5 = 1
+}
+
+pred = matrix(NA, nrow = 99, ncol = 10000)
+for(colonne in 1:ncol(pred)){
+  pred[,colonne] =  qpois(seq(.01,.99, .01), (pp[i]+1))
+}
+
+## Calcolo la rPIT
+n = 10
+jitter = .0001
+seme = 1
+pt = c()
+conta = c()
+
+for(i in 1:10000){
+  F_hat = ecdf(pred[,i])
+  F2 = F_hat(veri[i])
+  F1 = F_hat(veri[i]-1)
+  
+  if(F1 != F2){
+    pt = c(pt, runif(n, F1, F2)) # rPIT
+  } else {
+    conta = c(conta, i)
+    F_y1 = F1 + runif(1, 0, jitter)
+    F_y2 = F2 + runif(1, 0, jitter)
+    #print(F_y1)
+    #print(F_y2)
+    pt <- c(pt, runif(1, min(F_y1,F_y2), max(F_y1, F_y2)))
+  }
+  
+  we <-pt >= 1 # Potremmo aver ottenuto valori >= 1.
+  if (any(we)) {
+    print(table(we))
+    pt[we] <- 1 - runif(sum(we),0,jitter)
+  }
+}
+#pt <- pmin(pmax(pt, 0), 1)
+hist(pt, breaks = 20, freq = F, xlab = '${p_t}$', ylab = 'Densità', col = 'grey', main = 'rPIT', border = 'black')
+
+#overpred = hist(pt, breaks = 20, freq = F, xlab = '${p_t}$', ylab = 'Densità', col = 'grey', main = 'Overprediction', border = 'black')
+#underpred =  hist(pt, breaks = 20, freq = F, xlab = '${p_t}$', ylab = 'Densità', col = 'grey', main = 'Underprediction', border = 'black')
+#overdisp = hist(pt, breaks = 20, freq = F, xlab = '${p_t}$', ylab = 'Densità', col = 'grey', main = 'Predictive overdispersion', border = 'black')
+#underdisp = hist(pt, breaks = 20, freq = F, xlab = '${p_t}$', ylab = 'Densità', col = 'grey', main = 'Predictive underdispersion', border = 'black')
+
+#library(tikzDevice)
+#tikz("rPIT_noOK-sim.tex", width = 6, height = 6)
+#par(mfrow = c(2,2))
+
+plot(overpred, freq = F, main = 'Overprediction')
+abline(h = 1, col = 'navyblue', lty = 'dashed')#, ltw = .6)
+plot(underpred, freq = F, main = 'Underprediction')
+abline(h = 1, col = 'navyblue', lty = 'dashed')#, ltw = .6)
+plot(overdisp, freq = F, main = 'Predictive overdispersion')
+abline(h = 1, col = 'navyblue', lty = 'dashed')#, ltw = .6)
+plot(underdisp, freq = F, main = 'Predictive underdispersion')
+abline(h = 1, col = 'navyblue', lty = 'dashed')#, ltw = .6)
+
+
+
+#dev.off()
