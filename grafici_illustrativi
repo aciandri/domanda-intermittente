@@ -1,3 +1,24 @@
+## Grafici serie per SBC ####
+df_int = read.csv('intermittenti/intermittent20240.csv')
+df_err = read.csv('erratiche/erratic225.csv')
+df_lumpy = read.csv('lumpy/lumpy50.csv')
+df_smooth = read.csv('smooth/smooth11.csv')
+
+
+
+library(tikzDevice)
+tikz("sbc.tex", width = 6, height = 4)
+par(mfrow = c(2,2))
+ts.plot(ts(df_err$vendite, start = c(2012, 75), frequency = 365.25), main = 'Serie erratica', ylab = 'vendite' )
+ts.plot(ts(df_lumpy$vendite, start = c(2012, 75), frequency = 365.25), main = 'Serie lumpy', ylab = 'vendite' )
+ts.plot(ts(df_smooth$vendite, start = c(2012, 75), frequency = 365.25), main = 'Serie smooth', ylab = 'vendite' )
+ts.plot(ts(df_int$vendite, start = c(2012, 75), frequency = 365.25), main = 'Serie intermittente', ylab = 'vendite' )
+
+dev.off()
+
+
+
+## rPIT simulati ####
 params_neg_binom <- function(mean, p) { # calcolo il valore di n (tempo variante) in modo da avere una certa media
   n = mean * p/(1-p)
   
