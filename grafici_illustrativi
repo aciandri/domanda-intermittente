@@ -1,3 +1,19 @@
+## Grafico esempio serie intermittente capitolo 1###
+file_path = paste0('intermittenti/', 'intermittent760' ,'.csv')
+
+dati = vroom(file_path)
+dati = as.data.frame(dati)
+train = dati[dati$periodo == 1,]
+plot.ts(ts(train$vendite, start = c(2012, 75), frequency = 365.25), main = 'intermittent 760', ylab = 'Frequenza', xlab = 'Tempo')
+
+library(tikzDevice)
+tikz("esempio_intermittente.tex", width = 6, height = 4)
+
+plot.ts(ts(dati$vendite, start = c(2012, 75), frequency = 365.25), ylab = 'Frequenza', xlab = 'Tempo')
+
+dev.off()
+
+
 ## Grafici serie per SBC ####
 df_int = read.csv('intermittenti/intermittent20240.csv')
 df_err = read.csv('erratiche/erratic225.csv')
