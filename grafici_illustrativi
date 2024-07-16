@@ -16,9 +16,9 @@ dev.off()
 
 ## Grafici serie per SBC ####
 df_int = read.csv('intermittenti/intermittent20240.csv')
-df_err = read.csv('erratiche/erratic225.csv')
+df_err = read.csv('erratiche/erratic2.csv') # prima 225
 df_lumpy = read.csv('lumpy/lumpy50.csv')
-df_smooth = read.csv('smooth/smooth11.csv')
+df_smooth = read.csv('smooth/smooth5.csv') # prima 11
 
 
 
