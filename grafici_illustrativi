@@ -15,6 +15,8 @@ dev.off()
 
 
 ## Grafici serie per SBC ####
+setwd('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/')
+
 df_int = read.csv('intermittenti/intermittent20240.csv')
 df_err = read.csv('erratiche/erratic2.csv') # prima 225
 df_lumpy = read.csv('lumpy/lumpy50.csv')
