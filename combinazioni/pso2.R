@@ -9,22 +9,18 @@ library(doSNOW)
 library(purrr)
 library(pso) # per inventario
 library(vroom)
-#library(DescTools)
+
 
 ## Dati e funzioni ####
 source('/home/ciandri/codice/funzioni_tesi.R')
 
 folder = '/home/ciandri/risultati_df/df_lumpy4'
-csv = list.files(folder, full.names = T)[1:200]
+csv = list.files(folder, full.names = T)
 df_prev = map_df(csv, vroom)
-#df_prev = vroom('/home/ciandri/risultati_df/df_prev_int_completo6.csv')
 df_prev = df_prev[,-c(1:which(colnames(df_prev) == 'Serie')-1)]
 
 df_prev = as.data.frame(df_prev)
 
-#df_prev_int = df_prev_int[-which(df_prev_int$Serie == 'intermittent3494'),]
-#df_prev = rbind(df_prev_int, df_prev_lumpy, df_prev_smooth, df_prev_err)
-#df_prev = df_prev[-which(df_prev$Metodo %in% c('ARIMA', 'ETS'))]
 df_prev = df_prev %>% mutate(across(5:ncol(df_prev), round))
 test = df_prev[df_prev$h > 28,]
 val = df_prev[df_prev$h<29,]
@@ -35,7 +31,6 @@ N = length(metodi)
 length(unique(df_prev$Serie))
 table(test$Metodo)
 df_prev1 = df_prev
-#df_prev = df_prev[which(!df_prev$Metodo %in% c('ARIMA', 'ETS')),]
 str(df_prev)
 
 
@@ -55,12 +50,7 @@ pesi_iniziali <- rep(1 /N+1e-16,N) # +1e-16 serve perché sennò l'approssimazio
 df_comb_brier1 = vroom('/home/ciandri/dati/comb_brier_lumpy158.csv')
 df_comb_brier1 = as.data.frame(df_comb_brier1)
 df_comb_brier1 = df_comb_brier1[, -c(1:(which(colnames(df_prev) == 'Serie')-1))]
-series_to_process <- unique(val$Serie)#[grep('lumpy',unique(val$Serie))]#[1203:length(unique(val$Serie)[grep('intermittent',unique(val$Serie))])]#[132: 191]
-
-## PER DEFINIRE QUALE COMBINAZIONE MANDARE
-#combinazione = c(1,9)
-#costi = paste0('cost', combinazione[2] ,'-opt')
-#livello = combinazione[2]/sum(combinazione)
+series_to_process <- unique(val$Serie)
 
 df_comb_inv_opt <- foreach(serie = series_to_process, .combine = rbind, .packages = c('foreach', 'doParallel')) %dopar% {
 
@@ -71,18 +61,20 @@ df_comb_inv_opt <- foreach(serie = series_to_process, .combine = rbind, .package
   df_comb_inv = df_comb_inv2 =df_comb_inv3 =  df_comb_brier1
   df_comb_inv[,5:ncol(df_comb_inv)] = df_comb_inv3[,5:ncol(df_comb_inv)] = df_comb_inv2[,5:ncol(df_comb_inv2)] = 0 # metto tutto a 0 così posso vedere se c'è qualcosa che non va
   df_comb_inv3$Serie =df_comb_inv$Serie =df_comb_inv2$Serie = serie
-df_comb_inv3$Combinazione = 'cost4-opt'  
-df_comb_inv$Combinazione = 'cost9-opt'
+  df_comb_inv3$Combinazione = 'cost4-opt'  
+  df_comb_inv$Combinazione = 'cost9-opt'
   df_comb_inv2$Combinazione = 'cost19-opt'
   df_comb_inv3$vendite =df_comb_inv$vendite = df_comb_inv2$vendite = dd_test$vendite[1:28]
   print(paste('check0:', serie))
   
   ## Calcolo F_hat da usare nella funzione da minimizzare
   F_hat = list()
-  #unici = unique(unlist(dd_tmp[5:ncol(dd_tmp)])) # calcolo i valori unici e ci faccio una matrice
   horiz = 1:28 # validation set
-if(max(1000, max(dd_tmp[,ncol(dd_tmp)])) == 1000){  ysum = 0:1000
-}else{ysum = (max(dd_tmp[,ncol(dd_tmp)])-2000):max(dd_tmp[,ncol(dd_tmp)])}
+  if(max(1000, max(dd_tmp[,ncol(dd_tmp)])) == 1000){  
+    ysum = 0:1000
+  }else{
+    ysum = (max(dd_tmp[,ncol(dd_tmp)])-2000):max(dd_tmp[,ncol(dd_tmp)])
+  }
   for(orizzonte in horiz){ # per ogni orizzonte temporale
     F_met = list()
     
@@ -106,22 +98,9 @@ if(max(1000, max(dd_tmp[,ncol(dd_tmp)])) == 1000){  ysum = 0:1000
   pesi_ott9 = cbind(metodi, pesi_ott)
   
   print(paste('check2:', serie))
-  # pesi * quantili
-NO ="  quantili = (sapply(metodi, function(x) test[test$Metodo == x & test$Serie == serie, 5:ncol(test)] * as.numeric(pesi_ott[pesi_ott[,1] == x,2])))
-  for(righe in rownames(quantili)){
-    pp = rep(0, 28)
-    for(met in metodi){
-      pp =  pp+ quantili[righe, met][[1]]
-    }
-    df_comb_inv[, righe] = round(pp)
-  }  "
+
   print(paste('check3:', serie))
-  
-  
-  # salvo il file
-#  file_path = paste0('/home/ciandri/risultati_df/df_inv9/comb_inv9_', serie, '.csv')
-#  write.csv(df_comb_inv, file_path)
-  
+
   pesi_ott2 = psoptim(pesi_iniziali,
                       f = function(pesi) w_inventario2(serie = serie, horiz = 1:28, distrib = F_hat, pesi = pesi, costo = c(1,19)),
                       lower = 1e-16,
@@ -129,19 +108,7 @@ NO ="  quantili = (sapply(metodi, function(x) test[test$Metodo == x & test$Serie
   
   pesi_ott19 = pesi_ott2$par / sum(pesi_ott2$par)
   pesi_ott19 = cbind(metodi, pesi_ott19)
-  
-  NO = "quantili = (sapply(metodi, function(x) test[test$Metodo == x & test$Serie == serie, 5:ncol(test)] * as.numeric(pesi_ott19[pesi_ott19[,1] == x,2])))
-  for(righe in rownames(quantili)){
-    pp = rep(0, 28)
-    for(met in metodi){
-      pp =  pp+ quantili[righe, met][[1]]
-    }
-    df_comb_inv2[, righe] = round(pp)
-  }  
-  # salvo il file
-  file_path = paste0('/home/ciandri/risultati_df/df_inv_int6/comb_inv_', serie, '.csv')
-  write.csv(df_comb_inv, file_path)
-  "
+
 print(paste('check3:', serie))
   
 
@@ -158,22 +125,20 @@ print(paste('check3:', serie))
 
   quantili = (sapply(metodi, function(x) test[test$Metodo == x & test$Serie == serie, 5:ncol(test)] * as.numeric(pesi_ott4[pesi_ott4[,1] == x,2])))
   for(righe in rownames(quantili)){
-pp1 = rep(0,28)
-pp2 = rep(0,28)
+    pp1 = rep(0,28)
+    pp2 = rep(0,28)
     pp = rep(0, 28)
     for(met in metodi){
       pp =  pp+ quantili[righe, met][[1]]
-pp1 = pp1+ quantili1[righe, met][[1]]
-pp2 = pp2+ quantili2[righe, met][[1]]    
-}
-df_comb_inv [,righe] = round(pp1)
-df_comb_inv2[,righe] = round(pp2)
+      pp1 = pp1+ quantili1[righe, met][[1]]
+      pp2 = pp2+ quantili2[righe, met][[1]]    
+    }
+    df_comb_inv [,righe] = round(pp1)
+    df_comb_inv2[,righe] = round(pp2)
     df_comb_inv3[, righe] = round(pp)
   }
   # salvo il file
   file_path = paste0('/home/ciandri/risultati_df/df_inv_lumpy4/comb_inv_', serie, '.csv')
-#  write.csv(df_comb_inv, file_path)
-
   output = rbind(df_comb_inv, df_comb_inv2,df_comb_inv3)
   write.csv(output, file_path) 
  return(output)
