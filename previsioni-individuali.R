@@ -1,20 +1,20 @@
+## Esempio di processo previsivo considerando le serie erratiche
 rm(list = ls())
 
 library(vroom)
 
-source('~/Desktop/tesi_magistrale/pratica-tesi_mag/codiceR/funzioni_tesi_pulite.R')
-#dati = read.csv('~/Desktop/tesi_magistrale/pratica-tesi_mag/codiceR/codice-tesi_magistrale/mini_ds/mini1_completo.csv', sep = ';', dec = ',')
-da_eliminare = read.table('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/da_eliminare.txt')
-sku = read.csv('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/generali/sku_new2.csv') # non ha quelle da levare
-#da_analizzare = which(!sku$SBC[sku$cat_SBC == 'intermittent'] %in% da_eliminare$x) # prendo solo i file non da eliminare
+source('funzioni_tesi_pulite.R')
+da_eliminare = read.table('datasets/da_eliminare.txt')
+sku = read.csv('datasets/generali/sku_new2.csv') # non ha quelle da levare
+#da_analizzare = which(!sku$SBC[sku$cat_SBC == 'erratiche'] %in% da_eliminare$x) # prendo solo i file non da eliminare
 
 ### levo quelle che ho già fatto ####
-df_prev_int = vroom('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_intermittenti_completi/df_prev_int_completo1.csv')
+df_prev_int = vroom('previsioni_df/df_prev_OK/df_intermittenti_completi/df_prev_int_completo1.csv')
 df_prev_int = df_prev_int[,-1]
-df_prev_err = vroom('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_erratic_completo.csv')
+df_prev_err = vroom('previsioni_df/df_prev_OK/df_prev_erratic_completo.csv')
 df_prev_err = df_prev_err[,-1]
-df_prev_lumpy = vroom('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_lumpy_completo.csv')
-df_prev_smooth = vroom('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_smooth_completo.csv')
+df_prev_lumpy = vroom('previsioni_df/df_prev_OK/df_prev_lumpy_completo.csv')
+df_prev_smooth = vroom('previsioni_df/df_prev_OK/df_prev_smooth_completo.csv')
 df_prev_smooth = df_prev_smooth[,-1]
 #sku$fatto = ifelse(sku$SBC %in% unique(c(df_prev_err$Serie, df_prev_int$Serie, df_prev_lumpy$Serie, df_prev_smooth$Serie)), 1, 0)
 table(sku$fatto)
@@ -27,41 +27,16 @@ df_prev_smooth = as.data.frame(df_prev_smooth)
 
 da_fare = unique(sku$SBC[which((!sku$SBC %in% unique(df_prev_lumpy$Serie) & 
                                   sku$fatto == 0 &
-                                  sku$cat_SBC == 'lumpy'))])#[660:1500]
-da_fare = da_fare[6000:length(da_fare)]
+                                  sku$cat_SBC == 'erratic'))])
+
 #serie_fatte = c(df_prev_err$Serie, df_prev_int$Serie, df_prev_lumpy$Serie, df_prev_smooth$Serie)
-folder_path_df <- '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_intermittenti'
+folder_path_df <- 'previsioni_df/df_prev_OK/df_prev_intermittenti'
 csv_files_df <- list.files(folder_path_df, pattern = "\\.csv$", full.names = TRUE)[1:39] # dal 40 in poi sono quelli completi
 serie_fatte2 = sapply(sapply(sapply(csv_files_df, function(x) strsplit(x, split = '\\/')), 
               function(y) strsplit(y[10], '\\.')[[1]][1]), 
        function(z) strsplit(z, split = '\\_')[[1]][2])
-da_analizzare1 = which(!sku$SBC %in% c(da_eliminare$x, serie_fatte))#, serie_fatte2) )# prendo solo i file non da eliminare
-#write.csv(sku, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/generali/sku_new2.csv')
+da_analizzare1 = which(!sku$SBC %in% c(da_eliminare$x, serie_fatte))#, serie_fatte2) )
 
-set.seed(1)
-prova6 = sample(da_fare[!da_fare %in% c(prova, prova2, prova3, prova4, prova5)], 1500)
-write.table(prova6, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/da_fare6.txt')
-
-
-
-prova = sku$SBC[da_analizzare1]
-
-
-previsioni = read.csv('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_erratic_completo.csv')
-
-table(previsioni$Serie)
-length(unique(previsioni$Serie))
-table(previsioni$Metodo)
-da_fare = sku$SBC[sku$cat_SBC == 'erratic'][da_analizzare][which(!sku$SBC[sku$cat_SBC == 'erratic'][da_analizzare] %in% previsioni$Serie)][1:10]
-da_fare = sku$SBC[sku$cat_SBC == 'erratic'][da_analizzare][1:10]
-
-table(da_fare %in% unique(previsioni$Serie))
-#perc_0 = c() # percentuale di 0 nelle serie
-
-setwd('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/')
-da_fare = unique(sku$SBC[which((!sku$SBC %in% unique(df_prev$Serie) & 
-                                  sku$fatto == 0 &
-                                  sku$cat_SBC == 'erratic'))])[1:5]
 
 ### Librerie ####
 
@@ -70,7 +45,7 @@ library(doParallel)
 library(doSNOW)
 
 
-cl <- makeCluster(detectCores() - 1, outfile = ' ') # Usa tutti i core meno uno
+cl <- makeCluster(detectCores() - 1, outfile = ' ') 
 #registerDoParallel(cl)
 registerDoSNOW(cl)
 
@@ -92,20 +67,15 @@ clusterEvalQ(cl, {
 })
 sss = Sys.time()
 tau = seq(.01, .99, by = .01)
-flaggati = c() # contiene le serie BN che vengono fatte con Poisson (caso limite)
-setwd('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/datasets/')
-
-#intermittent3494
+setwd('/datasets/')
 
 prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('foreach', 'doParallel')) %dopar% {
   
   print(nome_serie)
-  file_path = paste0('lumpy/', 'lumpy4823' ,'.csv')
- # if(!file.exists(file_path)) next
+  file_path = paste0('erratiche/', serie ,'.csv')
   dati = vroom(file_path)
   dati = as.data.frame(dati)
   dati = dati %>% select(-c(state_id, cat_id, SBC, dist_first_sale, dist_last_sale, last_sales_bet))
-#  perc_0 = c(perc_0 ,prop.table(table(dati$vendite == 0))[2]) # per calcolare la % di 0
   df_prev= data.frame(Serie = nome_serie, h = seq(1:56)) # per gamqr
   
   #####
@@ -123,7 +93,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   test = dati[dati$periodo != 1,]
   
   train_ts = ts(train$vendite, start = c(2012, 75), frequency = 365.25)
-  test_ts = ts(test$vendite, start = c(2016, 86), frequency = 365.25) # "2016-03-27" (115)
+  test_ts = ts(test$vendite, start = c(2016, 86), frequency = 365.25) # "2016-03-27"
   
   train$date = test$date = train$periodo = test$periodo =NULL # elimino la data, mi serviva solo per dividere i dati
   test$event_name_1[which(!(test$event_name_1) %in% (train$event_name_1))] = ' ' # per evitare problemi in fase di previsione
@@ -135,7 +105,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   # quant qual
   train[,costanti(train)] = NULL
   
-  # controllo eventuali variabili problematiche (prezzo): potrebbe essere costante (da levare) o con pochi valori (da trasformare in fattore)
+  # controllo eventuali variabili problematiche (prezzo): potrebbero essere costanti (da levare) o con pochi valori (da trasformare in fattore)
   info_prezzo = c('prezzo', 'relative_price_cat', 'relative_price_dep')
   
   formula_co = 'vendite ~  event_type_1 + event_name_1+ s(prop_week, k = length(unique(train$prop_week))) + s(media_28,  k =  length(unique(train$media_28))) + s(media_7,  k =  length(unique(train$media_7)))' 
@@ -144,7 +114,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
     if( price %in% colnames(train) ) { # se non è costante
       
       if(length(unique(train[,price]))<= 3) { # se price ha meno di 3 valori unici (quindi da mettere come fattore nel gamqr)
-        if('FALSE' %in% names(table(unique(test[,price]) %in% unique(train[,price])))) { # se ci sono prezzi nel test che non sono nel train, eliminare la variabile e si passa al ciclo successivo
+        if('FALSE' %in% names(table(unique(test[,price]) %in% unique(train[,price])))) { # se ci sono prezzi nel test che non sono nel train, eliminare la variabile e passatr al ciclo successivo
           train[,price] = test[,price] = NULL
           next
         }
@@ -153,7 +123,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
         test[,price] = factor(test[,price]) 
       }
       
-      formula_co = paste0(formula_co, '+', ifelse(is.factor(train[,price]), price , paste0('s(',price,', k = length(unique(train$',price, ')))'))) # se ha meno di 3 valori unici come fattore, sennò normale
+      formula_co = paste0(formula_co, '+', ifelse(is.factor(train[,price]), price , paste0('s(',price,', k = length(unique(train$',price, ')))'))) # se ha meno di 3 valori unici come fattore
       #formula_co = paste0(formula_co, '+', aggiunta)
       }
     }
@@ -209,7 +179,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   df_prev$quant_1 = df_prev$quant_0.99
   
   ## check
-  #print('OK GAM QR')
+  print('OK GAM QR')
   
   ####
   ### Croston & SBA #####
@@ -226,7 +196,6 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   prev_crost[,104] = prev_crost[,103]
   
   ## Salvo le previsioni ####
-#  head(prev_crost)
   df_prev = rbind(df_prev, prev_crost)
   
   #### SBA ####
@@ -251,7 +220,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   df_prev = rbind(df_prev, prev_tsb)
   
   ## check
-  #print('OK SBA e Croston')
+  print('OK SBA e Croston')
   
   ####
   ### ARIMA ####
@@ -271,7 +240,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   #table(df_prev$Metodo)
   
   ## check
-  #print('OK ARIMA')
+  print('OK ARIMA')
   
   ####
   ### ETS ####
@@ -289,23 +258,10 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   ## Salvo le previsioni ####
   df_prev = rbind(df_prev, prev_ets)
   #table(df_prev$Metodo)
+
+  print('OK ETS')
   
-  ## iETS(o) ####
-  mod_iets = adam(train_ts, "MNN", occurrence="o", oesmodel="ZZN", h=56, holdout=TRUE, silent=FALSE,
-                  distribution = "dgamma") # dava MMN e MMN. Il paper diceva MNN
-  fore_iets = forecast(mod_iets, h = 56, interval = 'simulated', level = c(0,seq(.02, .98, by = .02)))#seq(.01,.99, by = .01))
-  #str(fore_iets)
-  
-  fore_iets_df = data.frame(fore_iets$lower)
-  fore_iets_df = fore_iets_df[, ncol(fore_iets_df):1]
-  fore_iets_df =cbind(fore_iets_df, data.frame(fore_iets$upper[,2:ncol(fore_iets_df)]))# levo .5 da fore_iets_df$upper (altrimenti ce ne sono due)
-  
-  prev_iets = prev_arima
-  prev_iets$Metodo = 'iETS(MNN)[o]'
-  prev_iets[,5:103] = sapply(1:ncol(fore_iets_df), function(quantile) ceiling(fore_iets_df[,quantile]))
-  prev_iets$quant_1 = prev_iets$quant_0.99
-  
-  ## iETS altri ####
+  ## iETS ####
   prev_iets_i <- iETS_quant_new(train = train_ts, tipo = 'inverse-odds-ratio',  prev_arima = prev_arima)
   prev_iets_d <- iETS_quant_new(train = train_ts, tipo = 'direct', prev_arima = prev_arima)
   prev_iets_g <- iETS_quant_new(train = train_ts, tipo = 'general', prev_arima = prev_arima)
@@ -313,7 +269,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   df_prev = rbind(df_prev, prev_iets_i, prev_iets_g, prev_iets_d)
   
   ## check
-  #print('OK ETS e iETS')
+  print('OK ETS e iETS')
 
   ## bootstrap WSS ####
   wss = boot_wss()
@@ -329,7 +285,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   table(df_prev$Metodo)
 
   ## check
-  #print('OK WSS')
+  print('OK WSS')
   
   ## Poisson ####
   mu = mean(train$vendite)
@@ -356,7 +312,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   }
   
   ## Simulazioni
-  # voglio 1000 simulazioni per ogni orizzonte temporale? Quindi 56x1000
+  # voglio 1000 simulazioni per ogni orizzonte temporale. Quindi 56x1000
   simulazioni = data.frame(h = seq(1:56), matrix(NA, 56, 1000))
   colnames(simulazioni)[2:ncol(simulazioni)] = sapply(1:1000, function(x) paste0('sim_', x)) 
   mu_t1 = mu_est[length(mu_est)]
@@ -430,7 +386,7 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
     }
     
     ## Simulazioni
-    # voglio 1000 simulazioni per ogni orizzonte temporale? Quindi 56x1000
+    # voglio 1000 simulazioni per ogni orizzonte temporale. Quindi 56x1000
     simulazioni = data.frame(h = seq(1:56), matrix(NA, 56, 1000))
     colnames(simulazioni)[2:ncol(simulazioni)] = sapply(1:1000, function(x) paste0('sim_', x))
     mu_t1 = mu_est[length(mu_est)]
@@ -455,25 +411,14 @@ prev_tmp <- foreach(nome_serie = da_fare, .combine = rbind, .packages = c('forea
   }
   
   df_prev = rbind( df_prev, prev_nbinom)
-  #print('OK BN')
+  print('OK BN')
+  write.csv(df_prev, paste0('previsioni_df/df_prev_OK/df_prev_', serie, '.csv'))
   return(df_prev)
-  #write.csv(previsioni, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_int_completo.csv', row.names = FALSE)#, append = T)
-  
+
 }
 end = Sys.time()
 stopCluster(cl)
 end-sss
 
-table(prev_tmp$Metodo)
-length(unique(prev_tmp$Serie))
-unique(prev_tmp$Serie) == da_fare
-unique(prev_tmp$Serie) %in% unique(previsioni$Serie)
-which(prev_tmp[prev_tmp$Serie == unique(prev_tmp$Serie)[1],100] != previsioni [previsioni$Serie == unique(prev_tmp$Serie)[1],100])
-previsioni = rbind(previsioni, previs[which(previs$Serie %in% unique(previs$Serie) [which(!unique(previs$Serie) %in% unique(previsioni$Serie))]),])
-
-previsioni = rbind(previsioni, prev_tmp)
-table(previsioni$Metodo)
-length(unique(previsioni$Serie))
-#previsioni = previsioni %>% mutate(across(5:ncol(previsioni), round, 3))
-write.csv(previsioni, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_erratic_completo.csv', row.names = FALSE)#, append = T)
+write.csv(prev_tmp, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_erratic_completo2.csv', row.names = FALSE)
 
