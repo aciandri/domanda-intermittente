@@ -386,10 +386,7 @@ count_quantile_avg_jittering = function( df = dati, y = 'y', x = colnames(dati)[
   }
   #str(Q_Tztau)
   
-  
-  #print(paste0('quantile fit iniziali: ',quantile_fits))
   quantile_fits = as.data.frame(sapply(quantile_fits , function(x) x/m))
-  #print(paste0('coefficienti medi: ',str(quantile_fits)))
   
   if(!flag) return(quantile_fits)
   # previsione ####
@@ -643,14 +640,10 @@ log_score_comb = function(df_previsto, y, h =28){
     
     distrib = prop.table(table(t(df_previsto)[,i])) # probabilità dei valori
     prev = ifelse( y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0) # probabilità di prevedere il vero valore
-    #print(ifelse( prev > 0, log(prev), 1e-5))
     score = score + ifelse( prev > 0, log(prev), log(1e-5)) #/ nrow(test) # log score
-    #prva = c(prva, nomi[i])
     if(i %% h ==0 ) {
-      #print(table(prva))
       punteggio = c(punteggio, score/h)
       score =0 
-      #prva = c()
     }
   }
   return(punteggio)
@@ -658,7 +651,6 @@ log_score_comb = function(df_previsto, y, h =28){
 
 log_score_comb2 = function(serie = unique(val$Serie)[1],
                            df_previsto = val, h =28,
-                           #distribuzione = distribuzione,
                            metodi = metodi){
 ##  PER UNA SERIE ALLA VOLTA
   punteggio =0
@@ -677,36 +669,17 @@ log_score_comb2 = function(serie = unique(val$Serie)[1],
         distrib[met, names(tab)] = tab
         #print(tab)
       }
-      if(y[i] %in% colnames(distrib)){prev = distrib[,colnames(distrib) == y[i]]} else{prev = rep(0, nrow(distrib))}
-#      prev = ifelse( y[i] %in% colnames(distrib), distrib[,colnames(distrib) == y[i]], rep(0, nrow(distrib)))# probabilità di prevedere il vero valore
-      #print(ifelse( prev > 0, log(prev), 1e-5))
-      punteggio = punteggio + ifelse( prev > 0, log(prev), log(1e-5)) #/ nrow(test) # log score
+      if(y[i] %in% colnames(distrib)){
+        prev = distrib[,colnames(distrib) == y[i]]
+      } else{
+        prev = rep(0, nrow(distrib))
+      }
+      punteggio = punteggio + ifelse( prev > 0, log(prev), log(1e-10)) #/ nrow(test) # log score
     }
   return(punteggio/sum(punteggio))
 }
 
 ## brier score ####
-brier_score = function(df_previsto, y, h = 28){
-  brier = c()
-  score =0 
-  
-  for(i in 1:length(y)){
-    
-    distrib = prop.table(table(t(df_previsto)[,i])) # probabilità dei valori
-    #print(distrib)
-    prev = ifelse( y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0) # probabilità di prevedere il vero valore
-    
-    score = score -2*prev + sum(distrib^2) # somma dei punteggi di brier
-    #print(brier)
-    
-    if(i/h == 1){
-      brier = c(brier, score / h)
-      score = 0
-    }
-  }
-  return(brier)
-  return(mean(brier))
-}
 
 ## Punteggio di Brier per una serie per calcolo pesi per tutti metodi per una serie
 brier4 = function(serie = unique(val$Serie)[1], pesi = rep(1/length(metodi), length(metodi)), distribution = distribuzione, dd = dd_test){
@@ -726,19 +699,6 @@ brier4 = function(serie = unique(val$Serie)[1], pesi = rep(1/length(metodi), len
 }
 
 ## DRPS score ####
-drps_score = function(df_previsto, y){
-  drps = 0
-  massimo = max(y)
-  
-  for(i in 1:length(y)){ # per ogni punto nel tempo futuro di interesse
-    F_hat = ecdf(t(df_previsto)[, i])
-    #print(i)
-    
-    drps = drps + sum(sapply(0:massimo, function(k) (F_hat(k) - ifelse(y[i] <= k, 1, 0))^2))
-  }
-  return(drps/length(y))
-}
-
 ## Punteggio di DRPS per una serie per calcolo pesi
 drps2 = function(serie = unique(df_prev$Serie)[1], horiz = 1:28, pesi = rep(1/length(metodi), length(metodi)), 
                  distribuzione= F_hat, ysum = 100){
@@ -760,41 +720,20 @@ drps2 = function(serie = unique(df_prev$Serie)[1], horiz = 1:28, pesi = rep(1/le
 }
 
 ## Pesi inventario ####
-
-w_inventario1 = function(serie = unique(df_prev$Serie)[1], horiz = 1:28, validation_set = val, pesi = rep(1/N, N), costo =  rbind(c(1,4), c(1,9), c(1,19))){
-  # costo è una delle coppie di valori scritti
+w_inventario2 = function(serie = unique(df_prev$Serie)[1], horiz = 1:28, distrib = F_hat, pesi = rep(1/N, N), costo = c(1,4),
+                         vendite = dd_tmp$vendite){
+  # serie = nome della serie
+  # orizzonte = orizzonte temporale del validation per calcolare i pesi
+  # distrib = lista di ECDF per ogni orizzonte temporale che contiene i valori assunti nella funzione per ogni valore unico della serie
+  # costo = costi
   print(pesi)
-  
-  
+  pesi = pesi / sum(pesi)
   stock = lostsales = 0
   lev = costo[2] / sum(costo)
-  
+
   for(orizzonte in horiz){ # per ogni orizzonte temporale
-    dd = validation_set[validation_set[,'Serie'] == serie & validation_set[,'h'] == orizzonte,]
-    y_t = dd$vendite
-    
-    ## Calcolo F_comb
-    unici <- dd %>%  select(5:ncol(dd)) %>%       # Seleziona le colonne dalla quinta all'ultima
-      map(unique) %>%              # Applica unique a ogni colonna
-      unlist() %>%                 # Combina tutti i risultati in un singolo vettore
-      unique()                     # Rimuove i duplicati dal vettore risultante
-    
-    distrib = matrix(0, nrow = length(metodi), ncol = length(unici), dimnames = list(metodi, unici)) # metodi x valori unici dei quantili
-    for(met in metodi){
-      tab = cumsum(prop.table(table(t(dd[dd$Metodo == met, 5:ncol(dd)]))) )
-      valore_1 = as.numeric(names(tab)[1])
-      for(valore in names(tab)){
-        if(which(colnames(distrib) == valore)-which(colnames(distrib) == valore_1) > 1){ 
-          distrib[met, which(colnames(distrib) == valore_1):which(colnames(distrib) == valore)] = tab[as.character(valore_1)] # Così non è decrescente
-        }
-        distrib[met, valore] = tab[valore]
-        valore_1 = as.numeric(valore)
-      }
-      if(valore_1 < max(unici)) distrib[met, which(colnames(distrib) == valore_1):ncol(distrib)] = 1 # I valori più grandi del 100% percentile devono essere pari ad 1
-    }
-    
-    pesi = pesi / sum(pesi)
-    F_comb = colSums(pesi * distrib) # 1 previsione (distribuzione) per ogni punto nel tempo
+    y_t = vendite[orizzonte]
+    F_comb = rowSums(sweep(distrib[[orizzonte]], 2, pesi, `*`) )# trovo F_comb come la somma di tutti gli F pesati
     q_tau = as.numeric(names(F_comb)[min(which(F_comb > lev))])
     
     stock = stock + max(0, q_tau-y_t)
@@ -806,8 +745,7 @@ w_inventario1 = function(serie = unique(df_prev$Serie)[1], horiz = 1:28, validat
   return(costo[1]*stock/max(horiz) + costo[2]* lostsales /max(horiz) )
   
 }
-
-
+                             
 ## valutazione sharpness ####
 sharp = function(modello, df_previsto, y,  h = 28){
   # df_previsto = contiene solo le previsioni
@@ -824,23 +762,19 @@ sharp = function(modello, df_previsto, y,  h = 28){
   Niter = length(y)
   
   ## per drps
-  #massimo = max(y)
   
   ## calcolo lo score per ogni h = 1,..., 28 e faccio la media dentro i c()
   for(i in 1:Niter){
     distrib = distribuzioni[[i]] # probabilità dei valori
     prev <- ifelse(y[i] %in% names(distrib), distrib[names(distrib) == y[i]], 0)
     
-    #print(ifelse( prev > 0, log(prev), log(1e-5)))
     
     logaritmico = logaritmico + ifelse( prev > 0, log(prev), log(1e-10) )#/ nrow(test) # log score
     brier = brier -2*prev + sum(distrib^2) 
     
     F_hat = ecdf(df_previsto_t[, i])
     drps = drps + sum(sapply(0:max(massimo, 100), function(k) (F_hat(k) - ifelse(y[i] <= k, 1, 0))^2))
-    
-    ## se son passati 28 periodi, faccio la media di ogni punteggio
-    
+        
   }
   
   return(c(modello, 
