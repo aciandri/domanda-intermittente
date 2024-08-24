@@ -248,7 +248,35 @@ creo_mini = function (dati = dati, prezzi = prezzi1, sku = sku, identificativo, 
     # altrimenti, faccio la media solo degli ultimi 28 giorni
     else{ mini$media_7[i]= mean(mini$vendite[(i-7):(i-1)])  }
   }
-
+  
+  #### LightGBM e LSTM ####
+  
+  # calcolo prop_days come la differenza tra la data della vendita e il primo giorno dell'anno fratto la durata dell'anno
+  mini[, 'dist_first_sale'] = as.numeric(difftime(mini$date, inizio, units = 'days'))
+  
+  # distances between the last two positive sales
+  mini$last_sales_bet = 0
+  pointer1 = pointer2 = 1
+  
+  for(i in 2:nrow(mini)){
+    mini$last_sales_bet[i] = as.numeric(difftime(mini$date[pointer2], mini$date[pointer1], units = 'days'))
+    
+    if(mini$vendite[i] > 0){ # se la vendita in questione 
+      pointer1 = pointer2
+      pointer2 = i
+    }
+  }
+  
+  # distances from last positive sale
+  mini$dist_last_sale = 0
+  pointer1 = 1
+  
+  
+  for(i in 2:nrow(mini)){
+    mini$dist_last_sale[i] = difftime(mini$date[i], mini$date[pointer1], units = 'days')
+    if(mini$vendite[i] > 0) pointer1 = i
+  }
+  
   ## ALTRE OPERAZIONI #####
   ## Elimino le variabili che non mi servono
   mini$wm_yr_wk = mini$month = mini$year = NULL
@@ -391,7 +419,7 @@ count_quantile_avg_jittering = function( df = dati, y = 'y', x = colnames(dati)[
 ## iETS ####
 iETS_quant_new = function(train = train_ts, tipo = c("o", "inverse-odds-ratio", 'direct', 'general'), 
                           prev_arima = prev_arima){
-  mod_iets = adam(train, "MNN", occurrence= tipo, oesmodel="ZZN", h=56, holdout=TRUE, silent=FALSE,
+  mod_iets = adam(train, "MNN", occurrence= tipo, oesmodel="ZZN", holdout=F, silent=FALSE,
                   distribution = "dgamma") # dava MMN e MMN. Il paper diceva MNN
   fore_iets = forecast(mod_iets, h = 56, interval = 'simulated', level = c(0,seq(.02, .98, by = .02)))#seq(.01,.99, by = .01))
   #str(fore_iets)
@@ -609,6 +637,7 @@ log_score_comb = function(df_previsto, y, h =28){
   score =0 
   #prva = c()
   
+  
   for(i in 1:length(y)){
     #print(i)
     
@@ -625,6 +654,35 @@ log_score_comb = function(df_previsto, y, h =28){
     }
   }
   return(punteggio)
+}
+
+log_score_comb2 = function(serie = unique(val$Serie)[1],
+                           df_previsto = val, h =28,
+                           #distribuzione = distribuzione,
+                           metodi = metodi){
+##  PER UNA SERIE ALLA VOLTA
+  punteggio =0
+  #prva = c()
+  y = dd_tmp[,'vendite']
+  
+
+    for(i in 1:h){
+      #print(i)
+      dd = dd_tmp[dd_tmp[,'h'] == i,]
+      unici = unique(unlist(dd[5:ncol(dd)])) # calcolo i valori unici e ci faccio una matrice
+      
+      distrib = matrix(0, nrow = length(metodi), ncol = length(unici), dimnames = list(metodi, unici)) # metodi x valori unici dei quantili
+      for(met in metodi){ # per ogni metodo
+        tab = prop.table(table(t(dd[dd$Metodo == met, 5:ncol(dd)])))  # creo la distribuzione a partire dai quantili
+        distrib[met, names(tab)] = tab
+        #print(tab)
+      }
+      if(y[i] %in% colnames(distrib)){prev = distrib[,colnames(distrib) == y[i]]} else{prev = rep(0, nrow(distrib))}
+#      prev = ifelse( y[i] %in% colnames(distrib), distrib[,colnames(distrib) == y[i]], rep(0, nrow(distrib)))# probabilità di prevedere il vero valore
+      #print(ifelse( prev > 0, log(prev), 1e-5))
+      punteggio = punteggio + ifelse( prev > 0, log(prev), log(1e-5)) #/ nrow(test) # log score
+    }
+  return(punteggio/sum(punteggio))
 }
 
 ## brier score ####
@@ -775,11 +833,11 @@ sharp = function(modello, df_previsto, y,  h = 28){
     
     #print(ifelse( prev > 0, log(prev), log(1e-5)))
     
-    logaritmico = logaritmico + ifelse( prev > 0, log(prev), log(1e-5) )#/ nrow(test) # log score
+    logaritmico = logaritmico + ifelse( prev > 0, log(prev), log(1e-10) )#/ nrow(test) # log score
     brier = brier -2*prev + sum(distrib^2) 
     
     F_hat = ecdf(df_previsto_t[, i])
-    drps = drps + sum(sapply(0:massimo, function(k) (F_hat(k) - ifelse(y[i] <= k, 1, 0))^2))
+    drps = drps + sum(sapply(0:max(massimo, 100), function(k) (F_hat(k) - ifelse(y[i] <= k, 1, 0))^2))
     
     ## se son passati 28 periodi, faccio la media di ogni punteggio
     
@@ -818,7 +876,7 @@ fun.costi2 = function( metodo, df_previsto, y,
       F_hat = cumsum(prop.table(table(df_previsto_t[,i])))
       print(F_hat)
       q_tau = min(as.numeric(names(which(F_hat >= lev))))
-      if(max(0, q_tau-y[i]) > 100) break
+      #if(max(0, q_tau-y[i]) > 100) break
       stock = stock + max(0, q_tau-y[i])
       lostsales = lostsales + max(0, y[i]-q_tau)
       print(lostsales)
