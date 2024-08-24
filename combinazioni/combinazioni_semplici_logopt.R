@@ -7,18 +7,14 @@ library(foreach)
 library(doParallel)
 library(doSNOW)
 library(purrr)
-library(pso) # per inventario
 library(vroom)
 library(tikzDevice)
 
 ## Dati e funzioni ####
-source('~/Desktop/tesi_magistrale/pratica-tesi_mag/codiceR/funzioni_tesi_pulite.R')
-df_prev = vroom('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_intermittenti_completi/df_prev_int13.csv')
-df5 = vroom('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/altri_finali/df_prev_lumpy5.csv')
+source('funzioni_tesi_pulite.R')
+df_prev = vroom('previsioni_df/df_prev_OK/df_intermittenti_completi/df_prev_int13.csv')
 df_prev= df_prev[,-c(1)]
-#write.csv(df_prev, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_intermittenti_completi/df_prev_int_completo11.csv')
 
-#df_prev = df_prev[df_prev$Serie %in% setdiff(unique(df_prev$Serie), unique(df_prev1$Serie)),]
 df_prev = as.data.frame(df_prev)
 
 length(unique(df_prev$Serie)) 
@@ -29,20 +25,7 @@ val = df_prev[df_prev$h<29,]
 metodi = unique(df_prev$Metodo)
 h = unique(val$h) # 28 gg del validation set
 N = length(metodi)
-
-table(df_prev$Serie)[(table(df_prev$Serie) > 784)]
 table(table(test$Serie))
-
-nomi = names(table(df_prev$Serie)[(table(df_prev$Serie) > 784)])
-df_prev1 = df_prev[!df_prev$Serie %in% nomi,]
-for(el in nomi){
-  df_prev1 = rbind(df_prev1, df_prev[df_prev$Serie== el,][1:784,])
-}
-write.csv(df_prev1, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/altri_finali/df_prev_lumpy2.csv')
-## Leggo quelle già fatte
-#df_comb = read.csv( '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_comb/semplici/df_comb_semplici_int2.csv')
-str(df_comb)
-table(df_comb$Combinazione)
 
 ## SEMPLICI ####
 ### SA ####
@@ -64,13 +47,11 @@ df_comb_median = cbind(Combinazione, as.data.frame(test %>%
 df_comb1 = rbind(df_comb_round, df_comb_median)
 table(table(df_comb1$Combinazione))
 
-write.csv( df_comb1,'/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_comb/semplici/df_comb_semplici_int13.csv') ## fatto!
-
 df_comb1 = vroom('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_comb/semplici/df_comb_semplici_int12.csv')
 ### LOG ####
 
 ## creo df con i punteggi log
-df_comb_brier1 = vroom('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_comb/brier_score/comb_brier_lumpy158.csv')
+df_comb_brier1 = vroom('previsioni_df/df_prev_OK/df_prev_comb/brier_score/comb_brier_lumpy158.csv')
 df_comb_brier1 = as.data.frame(df_comb_brier1)
 df_comb_brier1 = df_comb_brier1[, -c(1:(which(colnames(df_comb_brier1) == 'Combinazione')-1))]
 series_to_process <- unique(val$Serie)
@@ -81,9 +62,8 @@ registerDoSNOW(cl)
 
 sss = Sys.time()
 df_comb_log <- foreach(serie = series_to_process, .combine = rbind, .packages = c('foreach', 'doParallel')) %dopar% { #1:length(unique(df_prev$Serie))
-#for(serie in unique(val$Serie)){  
-print(length(series_to_process)- which(series_to_process == serie))
-print(serie)
+  print(length(series_to_process)- which(series_to_process == serie))
+  print(serie)
   dd_test = test[test[,'Serie'] == serie ,] # voglio minimizzare la somma del punteggio di Brier
   dd_tmp = val[val[,'Serie'] == serie,] # validation per quella serie
   
@@ -107,43 +87,14 @@ print(serie)
     }
     df_comb_brier[, righe] = round(pp) # inserisco i risultati nel df
   }
-  #df1 = rbind(df1, df_comb_brier)
   return (df_comb_brier)
 }
 end = Sys.time()
 stopCluster(cl)
 end -sss
-table(table(df_comb1$Combinazione))
-df1 = df1[-1,]
 
 df_comb1 = rbind(df_comb1, df_comb_log)
 write.csv( df_comb1,'/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_comb/semplici/df_comb_semplici_int13.csv') ## fatto!
-
-
-pt_log = rPIT(df1[ , 5:(ncol(df1)-1)], y = df1$vendite,metodo = 'log')
-D_log = ks.test(pt_log, 'punif')#, exact = T)
-print(D_log$statistic) #0.04739824
-
-grafico1 = ggplot(as.data.frame(pt_log), aes(x=pt_log, y = after_stat(density))) + geom_histogram(bins = 20, color = 'black') +
-  #theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
-  geom_hline(yintercept = 1, color = 'navyblue', linetype = 'dashed', linewidth = .6) +
-  
-  xlab('rPIT') + ylab('Densità')+
-  labs(title=paste0( 'Log su 15 erratiche: D = ', round(D_log$statistic, 4))) + 
-  theme(plot.title = element_text(hjust = 0.5))
-ggsave("/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/risultati-bozza/15erratiche/rPIT-log_semplice.png", plot = grafico1, width = 12, height = 8)
-
-
-sharpn = sharp('Log', df1[, 5:(ncol(df1)-1)], df1$vendite, sharpn)
-
-df_comb = rbind(df_comb_round, df_comb_median, df1)
-str(df_comb)
-table(df_comb$Combinazione)
-table(df_comb$Serie)
-
-
-#write.csv(df_comb, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/previsioni_comb_erratiche.csv', row.names = FALSE)
-
 
 # LOG & CL OTTIM ####
 
@@ -158,7 +109,6 @@ pesi_init =  rep(1/length(metodi), length(metodi))
 
 
 df_comb_log_cl_opt <- foreach(serie = unique(df_prev$Serie), .combine = rbind, .packages = c('foreach', 'doParallel')) %dopar% {
-  #for(serie in unique(df_prev$Serie)[151:length(unique(df_prev$Serie))]){
   print(length(unique(df_prev$Serie))-which(unique(df_prev$Serie) == serie))
   print(serie)
   dd = val[val$Serie == serie,]
@@ -188,10 +138,7 @@ df_comb_log_cl_opt <- foreach(serie = unique(df_prev$Serie), .combine = rbind, .
       P_matrix_cl [i, met] =  ifelse( y_t %in% A_t, ifelse(y_t %in% names(distrib), distrib[names(distrib) == y_t], 0), 
                                       ifelse(y_t %in% names(distrib), distrib_cum(A_t[1]-1) , (1e-16)))
       print(P_matrix_cl [i, met])
-      #print(ifelse( y_t %in% A_t, distrib[names(distrib) == y_t], 
-                  #  ifelse(y_t %in% names(distrib), distrib_cum(min(A_t)-1) , (1e-16))))
-      # se y_t nell'area di interesse => f_i ; altrimenti se non è nella distribuzione => 0 , sennò prende l'area sotto la curva nell'area non di interesse (integrale nel discreto = somma)
-    }
+      }
     
   }
   
@@ -261,46 +208,5 @@ length(unique(df_comb_log_cl_opt$Serie))
 length(unique(df_comb_log_cl_opt$Combinazione))
 table(table(df_comb_log_cl_opt$h))
 
-#df_comb = df_comb[-which(df_comb$Combinazione == 'log-opt'),]
-df_comb1 = rbind(df_comb1, df_comb_log_cl_opt)
-length(unique(df_comb$Serie))
-length(unique(df_comb$Combinazione))
-write.csv(df_comb_log_cl_opt, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/df_prev_OK/df_prev_comb/semplici/df_comb_log_cl_int13.csv', row.names = FALSE)
-
-### Valutazione 
-
-#####
-pt_log_opt = rPIT(df_comb_log_cl_opt [ df_comb_log_cl_opt$Combinazione == 'cl-opt', 5:(ncol(df_comb_log_cl_opt)-1)], y = df_comb_log_cl_opt$vendite,metodo ='cl-opt')
-D_log = ks.test(pt_log_opt, 'punif')#, exact = T)
-write.csv(pt_log_opt, '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/risultati_vari/rpit-int45/rpit_cl-opt_int45.csv', row.names = FALSE)
-
-
-
-grafico1 = ggplot(as.data.frame(pt_log_opt), aes(x=pt_log_opt, y = after_stat(density))) + geom_histogram(bins = 20, color = 'black') +
-  #theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
-  geom_hline(yintercept = 1, color = 'navyblue', linetype = 'dashed', linewidth = .6) +
-  
-  xlab('rPIT') + ylab('Densità')+
-  labs(title=paste0( 'Log_opt : D = ', round(D_log$statistic, 4))) + 
-  theme(plot.title = element_text(hjust = 0.5))
-ggsave("/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/risultati-bozza/15erratiche/rPIT-log_opt.png", plot = grafico1, width = 12, height = 8)
-
-## CL
-pt_cl_opt = rPIT(df_comb [ df_comb$Combinazione == 'cl-opt', 4:(ncol(df_comb_log1)-1)], y = 'vendite',metodo ='cl-opt')
-D_log = ks.test(pt_cl_opt, 'punif')#, exact = T)
-
-grafico1 = ggplot(as.data.frame(pt_cl_opt), aes(x=pt_cl_opt, y = after_stat(density))) + geom_histogram(bins = 20, color = 'black') +
-  #theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
-  geom_hline(yintercept = 1, color = 'navyblue', linetype = 'dashed', linewidth = .6) +
-  
-  xlab('rPIT') + ylab('Densità')+
-  labs(title=paste0( 'cl-opt su 15 erratiche: D = ', round(D_log$statistic, 4))) + 
-  theme(plot.title = element_text(hjust = 0.5))
-ggsave("/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/risultati-bozza/15erratiche/rPIT-cl_opt.png", plot = grafico1, width = 12, height = 8)
-
-
-sharpn = sharp('log-opt',df_comb_log_cl_opt [ df_comb_log_cl_opt$Combinazione == 'log-opt', 5:(ncol(df_comb_log_cl_opt)-1)], df_comb_log_cl_opt$vendite[ df_comb_log_cl_opt$Combinazione == 'log-opt'], sharpn)
-
-
-
+write.csv(df_comb_log_cl_opt, 'previsioni_df/df_prev_OK/df_prev_comb/semplici/df_comb_log_cl_int13.csv', row.names = FALSE)
 
