@@ -13,26 +13,16 @@ library(patchwork)
 
 source('funzioni_tesi_pulite.R')
 folder = 'previsioni_df/df_prev_OK/df_prev_comb'
-csv = list.files(folder, full.names = T)[c(1,4,11)]
-dd = list.files(csv[2], full.names = T)
-dd1 = dd[grepl('int', dd)]
+csv = list.files(folder, full.names = T)[c(1,4,11)] # cartelle con le previsioni di interesse
+dd = list.files(csv[2], full.names = T) # ogni cartella contiene dei file csv con le previsioni
+dd1 = dd[grepl('intermittent', dd)] # qua si selezionano solo le previsioni di serie intermittenti
 erratiche1 = map_df(dd1, vroom)
-erratiche1 = erratiche1[,-c(1:(which(colnames(erratiche1) == 'Combinazione')-1))]
 erratiche1 = erratiche1
 table(table(erratiche1$Combinazione, erratiche1$h))
 table(erratiche1$h)
 erratiche1 = as.data.frame(erratiche1)
-df_prev1 = rbind(df_prev1, df_comb_brier)
-erratiche1 = rbind(erratiche1, df_comb_brier)
 
-folder1 = 'previsioni_df/df_prev_OK/altri_finali'
-
-csv1 = list.files(folder1, full.names = T)
-df = map_df(csv1[6], vroom)
-length(unique(df$Serie))
-
-df_prev = prova[grep('erratic', prova$Serie),]
-df_prev = erratiche1
+#df_prev = erratiche1 # prima cartella
 df_prev = rbind(df_prev, erratiche1)
 colnames(df_prev)[1] = 'Metodo'
 table(df_prev$Metodo)
@@ -46,30 +36,28 @@ N = length(metodi)
 
 ## rPIT ####
 
-## Creo i file rpit: ognuno contiene una serie per metodo e sono suddivise in cartelle in base al metodo
+## Creo i file rpit: ognuno contiene le serie per metodo e sono suddivise in cartelle in base al tipo di serie
 cl <- makeCluster(4, outfile = ' ')
-#registerDoParallel(cl)
 registerDoSNOW(cl)
 
 sss = Sys.time()
 orizzonte = sort(rep(29:56, 10)) # 28 x 10 estrazioni dalla distribuzione
 jit = 1/28
 semi = cbind(metodi, (1:length(metodi))) # per sto cazzo di seme sennò ties
-rpit <- foreach(met = metodi, .combine = rbind, .packages = c('foreach', 'doParallel')) %dopar% {
+rpit <- foreach(met = metodi, .packages = c('foreach', 'doParallel')) %dopar% {
   #for(met in metodi){
   print(met)
   pt = data.frame(Metodo = c(0), Serie = c(0), h = c(0), pt = c(0))
   for(serie in unique(df_prev$Serie)){
     print(serie)
-    p = data.frame(Metodo = met, Serie = serie, h = orizzonte, pt = rPIT(df_prev[df_prev$Serie == serie & df_prev$Metodo == met, 5:(ncol(df_prev)-1)], 
-                                                                         df_prev$vendite[ df_prev$Serie == serie & df_prev$Metodo == met], metodo = met, n = 10, jitter = jit, seed = as.numeric(semi[semi[,1] == met,2])))#, seed = as.numeric(semi[semi[,1] == met,2])))
+    p = data.frame(Metodo = met, Serie = serie, h = orizzonte, 
+                   pt = rPIT(df_prev[df_prev$Serie == serie & df_prev$Metodo == met, 5:(ncol(df_prev)-1)],
+                             df_prev$vendite[ df_prev$Serie == serie & df_prev$Metodo == met], metodo = met, 
+                             n = 10, jitter = jit, seed = as.numeric(semi[semi[,1] == met,2])))
     pt = rbind(pt, p)
-    #write.csv(p, file_path)
   }
   pt = pt[-1,]
   write.csv(pt, paste0('previsioni_df/risultati_vari/rpit_comb/rpit-lumpy/rpit_lumpy-', met, '.csv'))
-  
-  return(pt)
 }
 end = Sys.time()
 stopCluster(cl)
@@ -82,9 +70,6 @@ cl <- makeCluster(detectCores() - 4, outfile = ' ')
 #registerDoParallel(cl)
 registerDoSNOW(cl)
 
-clusterEvalQ(cl, {
-  library(DescTools)
-})
 
 sss = Sys.time()
 sharpness1 <- foreach(met = metodi, .combine = rbind,  .packages = c('foreach', 'doParallel')) %dopar% {
@@ -95,7 +80,7 @@ sharpness1 <- foreach(met = metodi, .combine = rbind,  .packages = c('foreach', 
 }
 stopCluster(cl)
 
-sharpness1# log basso e DRPS basso
+sharpness1
 sharpness1 = as.data.frame(sharpness1)
 colnames(sharpness1) = c('Metodo', 'Logaritmico', 'DRPS', 'Brier')
 str(sharpness1)
@@ -103,36 +88,32 @@ sharpness1 <- sharpness1 %>%
   mutate(across(c(Logaritmico, Brier, DRPS), as.numeric))
 sharpness1$peso = length(unique(df_prev$Serie))
 
-write.csv(sharpness1, 'previsioni_df/risultati_vari/rpit_comb/rpit-smooth/sharpness_err_new.csv')
+write.csv(sharpness1, 'previsioni_df/risultati_vari/rpit_comb/rpit-smooth/sharpness_smooth.csv')
 print(xtable(sharpness1, digits = 3), include.rownames=FALSE)
 
 
-## Costi #####
-cl <- makeCluster(4)#detectCores() - 4, outfile = ' ')
-#registerDoParallel(cl)
+## Tabelle dei costi simulati #####
+cl <- makeCluster(detectCores() - 4, outfile = ' ')
 registerDoSNOW(cl)
 
 sss = Sys.time()
-costi3 <- foreach(met = metodi, .combine = rbind,  .packages = c('foreach', 'doParallel')) %dopar% {
-  costi_tmp =  fun.costi2(metodo = met, df_prev[df_prev$Metodo == met, 5:(ncol(df_prev)-1)], df_prev$vendite[df_prev$Metodo == met])
+costi <- foreach(met = metodi, .combine = rbind,  .packages = c('foreach', 'doParallel')) %dopar% {
+  costi_tmp =  fun.costi2(metodo = met, df_prev[df_prev$Metodo == met, 5:(ncol(df_prev)-1)], 
+                          df_prev$vendite[df_prev$Metodo == met])
   return(costi_tmp)
 }
 stopCluster(cl)
-costi4 = as.data.frame(costi3)
-colnames(costi4) = c('Metodo', 'Cost(1,4)', 'Cost(1,9)', 'Cost(1,19)')
-costi1 <- costi4 %>%
+costi = as.data.frame(costi)
+colnames(costi) = c('Metodo', 'Cost(1,4)', 'Cost(1,9)', 'Cost(1,19)')
+costi<- costi %>%
   mutate(across(c(`Cost(1,4)`, `Cost(1,9)`, `Cost(1,19)`), as.numeric))
-costi1$peso = length(unique(df_prev$Serie))
-write.csv(costi1, 'previsioni_df/risultati_vari/rpit_comb/rpit-err/costi_tab-err.csv')
-print(xtable(costi1, digits = 3), include.rownames=FALSE)
+costi$peso = length(unique(df_prev$Serie))
+write.csv(costi, 'previsioni_df/risultati_vari/rpit_comb/rpit-err/costi_tab-err.csv')
+print(xtable(costi, digits = 3), include.rownames=FALSE)
 
 
 ## Trade off curves ####
-#curve = data.frame( Metodo = c(0), Livello = c(0), Investment= c(0), Lostsales_totali = c(0), CSL_deviation = c(0), Costo = c(0) )
-#curve = rep(NA, 5)
-
 cl <- makeCluster(4, outfile = ' ')
-#registerDoParallel(cl)
 registerDoSNOW(cl)
 
 sss = Sys.time()
@@ -143,7 +124,6 @@ curve <- foreach(met = metodi, .combine = rbind, .packages = c('foreach', 'doPar
 }
 stopCluster(cl)
 curve
-#curve = curve[-1,]
 curve = as.data.frame(curve)
 colnames(curve) = c('Metodo', 'Livello', 'Investment', 'Lostsales', 'CSLdeviation')
 curve <- curve %>%
@@ -154,7 +134,7 @@ write.csv(curve, 'previsioni_df/risultati_vari/curve_smooth.csv')
 #### METTO TUTTO INSIEME #####
 
 folder_pit = '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/risultati_vari/rpit_comb'
-csv_pit = list.files(folder_pit)#, full.names = T) 
+csv_pit = list.files(folder_pit)
 file_pit = csv_pit[c(13,14,17,20)]
 cartella = list()
 for(el in file_pit){
@@ -162,10 +142,10 @@ for(el in file_pit){
 }
 metodi = c('SA', 'median','cost19-opt', 'cost9-opt', 'cost4-opt', 'log', 'cl-opt', 'log-opt', 'brier-opt', 'drps-opt')
 setwd(folder_pit)
-folder = 'previsioni_df/df_prev_OK/altri_finali'
-csv = list.files(folder, full.names = T)
-df_tmp = map_df(csv, vroom)
-interesse = unique(df_tmp$Serie)
+#folder = 'previsioni_df/df_prev_OK/altri_finali'
+#csv = list.files(folder, full.names = T)
+#df_tmp = map_df(csv, vroom)
+#interesse = unique(df_tmp$Serie)
 grafici = list()
 for(met in metodi){
   print(met)
@@ -190,16 +170,17 @@ for(met in metodi){
     pt = vroom(ff)
     print('read ok')
     rpit = rbind(rpit, pt)
-    print('ok')
   }
   rpit = rpit[-which(rpit$Metodo == '0'),]
   #rpit = rpit[c(which(rpit$Serie %in% interesse), ok),]
   
   print(paste('letto:', met))
-  ## Creo grafico
-  D = ks.test(rpit$pt, 'punif')#, exact = T)
   
-  grafici[[met]] =  ggplot(rpit, aes(x=pt, y = after_stat(density))) + geom_histogram(bins = 15, color = 'black', fill = NA) +
+  ## Creo grafico
+  D = ks.test(rpit$pt, 'punif')
+  
+  grafici[[met]] =  ggplot(rpit, aes(x=pt, y = after_stat(density))) + 
+    geom_histogram(bins = 15, color = 'black', fill = NA) +
     geom_hline(yintercept = 1, color = 'blue', linetype = 'dashed', size = .6) +
     xlab('rPIT') + ylab('Densità')+
     labs(title=paste0(titolo, ': D = ', round(D$statistic, 4))) + 
@@ -217,19 +198,19 @@ for(met in metodi){
 }
 do.call(gridExtra::grid.arrange, c(grafici, ncol = 2))
 
-tikz("/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/risultati_vari/rpit_comb/rpit_combinazioni.tex", width = 2, height = 5)
+tikz("previsioni_df/risultati_vari/rpit_comb/rpit_combinazioni.tex", width = 2, height = 5)
 combined_grafici = do.call(gridExtra::grid.arrange, c(grafici, ncol = 2))
 dev.off()
 
 
 ## sharpness
 
-folder_pit = '/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/previsioni_df/risultati_vari/rpit_comb'
+folder_pit = 'previsioni_df/risultati_vari/rpit_comb'
 csv_pit = list.files(folder_pit)#, full.names = T) 
 file_pit = csv_pit[c(16, 17,20,23)]
 cartella = list()
 for(el in file_pit){
-  cartella[[el]] = list.files(paste0(folder_pit, '/', el))#, full.names = T)
+  cartella[[el]] = list.files(paste0(folder_pit, '/', el))
 }
 
 setwd(folder_pit)
@@ -250,24 +231,20 @@ sharpn_pesato = sharpn$peso*sharpn[,3:5]
 sharpn_pesato1 = cbind(Metodo = sharpn[,2], sharpn_pesato)
 sharpn_pesato1$Metodo[sharpn_pesato1$Metodo == 'Mediana'] = 'mediana'
 sharpn_pesato1$Metodo[sharpn_pesato1$Metodo == 'round_SA'] = 'SA'
-pesi = sharpn[sharpn$Metodo %in% c('SA', 'round_SA'),c(1,6)]
 
-prova = as.data.frame(sharpn_pesato1 %>%
+sharpn1 = as.data.frame(sharpn_pesato1 %>%
                         group_by(Metodo) %>%
                         summarise(across(colnames(sharpn_pesato1)[2:ncol(sharpn_pesato1)], ~ (sum(.)), .names = "{col}")))
-#prova = prova[,c(1,6:8)]
-colnames(prova) = c('Metodo', 'Logaritmico', 'DRPS', 'Brier')
-#sharpn1 = rbind(prova, sharpness, sharpness1)
+colnames(sharpn1) = c('Metodo', 'Logaritmico', 'DRPS', 'Brier')
 sharpn1 = as.data.frame(sharpn1 %>%
                           group_by(Metodo) %>%
                           summarise(across(colnames(sharpn1)[2:ncol(sharpn1)], ~ (sum(.)), .names = "{col}")))
 
-prova[,2:4] = prova[,2:4] / (sum(unique(sharpn$peso)))
-prova[,2:4] = prova[,2:4] / 12902#sum(pesi$peso)
-prova[,2:4] = round(prova[,2:4], 3)
-write.csv(prova, 'previsioni_df/risultati_vari/rpit_comb/sharpness_comb.csv')
+sharpn1[,2:4] = sharpn1[,2:4] / (sum(unique(sharpn$peso)))
+sharpn1[,2:4] = round(sharpn1[,2:4], 3)
+write.csv(sharpn1, 'previsioni_df/risultati_vari/rpit_comb/sharpness_comb.csv')
 
-print(xtable(prova), include.rownames = F)
+print(xtable(sharpn1), include.rownames = F)
 
 
 ### COSTI ####
@@ -287,18 +264,17 @@ for(i in 2:length(cartella)){
 costi$Metodo[costi$Metodo == 'round_SA'] = 'SA'
 costi$Metodo[costi$Metodo == 'Mediana'] = 'mediana'
 costi[,3:5] = costi[,3:5] * costi$peso
-prova = as.data.frame(costi %>%
+costi = as.data.frame(costi %>%
                         group_by(Metodo) %>%
                         summarise(across(colnames(costi)[3:ncol(costi)], ~ (sum(.)), .names = "{col}")))
-prova$peso = NULL
 
-prova[,2:4] = prova[,2:4] / (sum(unique(costi$peso)))
+costi[,2:4] = costi[,2:4] / (sum(unique(costi$peso)))
+costi$peso = NULL
 
-prova[,2:4] = prova[,2:4] / sum(pesi$peso)
-prova[,2:4] = round(prova[,2:4], 3)
-write.csv(prova, 'previsioni_df/risultati_vari/rpit_comb/costi_comb.csv')
+costi[,2:4] = round(costi[,2:4], 3)
+write.csv(costi, 'previsioni_df/risultati_vari/rpit_comb/costi_comb.csv')
 
-print(xtable(prova), include.rownames = F)
+print(xtable(costi), include.rownames = F)
 
 
 ## CURVE ####
@@ -314,30 +290,28 @@ for(i in 2:length(cartella)){
   print('ok')
 }
 
-# Unisci il dataframe pesi_df con sharpn in base alla colonna cartella
+# Unisco il dataframe pesi_df con sharpn in base alla colonna cartella
 costi1 = costi
 costi1 [,4:6] = costi1[,4:6] * costi1$peso
 costi1$Metodo[costi1$Metodo == 'round_SA'] = 'SA'
 costi1$Metodo[costi1$Metodo == 'Mediana'] = 'mediana'
-prova = as.data.frame(costi1 %>%
+costi1 = as.data.frame(costi1 %>%
                         group_by(Metodo, Livello) %>%
                         summarise(across(colnames(costi1)[4:6], ~ (sum(.)), .names = "{col}")))
-#prova = prova[,c(1,6:8)]
 
-prova[,3:5] = prova[,3:5] / sum(unique(costi$peso))
-#colnames(prova)[3:5] = c('Investment', 'Lostsales', 'CSLdeviation')
-write.csv(prova, 'previsioni_df/risultati_vari/rpit_comb/curve_comb.csv')
+costi1[,3:5] = costi1[,3:5] / sum(unique(costi$peso))
+write.csv(costi1, 'previsioni_df/risultati_vari/rpit_comb/curve_comb.csv')
 ####
 
 graf1 = ggplot(curve) + 
-  geom_line(aes(x = Investment, y = CSLdeviation, group = Metodo, color = Metodo), linetype = "longdash") + 
+  geom_line(aes(x = Investment, y = CSLdeviation, group = Metodo, color = Metodo)) + 
   geom_point(aes(x = Investment, y = CSLdeviation, group = Metodo, color = Metodo)) +
   ylab('CSL deviation')
 graf3 = ggplot(curve) + 
-  geom_line(aes(x = log(Investment), y = log(Lostsales), group = Metodo, color = Metodo), linetype = "longdash") + 
+  geom_line(aes(x = log(Investment), y = log(Lostsales), group = Metodo, color = Metodo)) + 
   geom_point(aes(x = log(Investment), y = log(Lostsales), group = Metodo, color = Metodo)) 
 graf2 = ggplot(curve) + 
-  geom_line(aes(x = Lostsales, y = CSLdeviation, group = Metodo, color = Metodo), linetype = "longdash") +
+  geom_line(aes(x = Lostsales, y = CSLdeviation, group = Metodo, color = Metodo)) +
   geom_point(aes(x = Lostsales, y = CSLdeviation, group = Metodo, color = Metodo)) + 
   scale_x_reverse() +  
   ylab('CSL deviation')
