@@ -23,7 +23,14 @@ Per l'analisi dei dati sopra descritti, si sono eseguiti 4 passaggi riportati ne
 2. Si è effettuata una scrematura dei dati in base ad una soglia arbitraria, scartando le serie che contengono meno del 20% di osservazioni pari a zero, in quanto non intermittenti. Si sono inoltre eliminate le serie caratterizzate da vendite costanti nulle nel *validation set*.
 3. Si è applicata la classificazione SBC.
 
-Si sono poi applicati iterativamente i quattordici metodi individuali descritti nel capitolo 2 (**individuali.R**), i cui risultati sono stati usati per il calcolo delle combinazioni di previsioni descritte nel capitolo 3. Il codice usato per quest'ultima operazione è contenuto nella cartella "**combinazioni**" ed è diviso in tre file: il primo contiene il calcolo dei pesi semplici e di quelli ottimali per i punteggi logaritmico e CL (*Censored Likelihood*), il secondo contiene le procedure per il calcolo di pesi ottimali in base al punteggio di Brier e DRPS e l'ultimo per il calcolo dei punteggi ottimali basati sui costi di inventario simulati ipotizzando un classico *newsvendor problem*. Infine, si è svolta una valutazione dei risultati (**valutazione.R**) in base alla calibrazione, *sharpness* e *performance* di inventario.
+Si sono poi applicati iterativamente i quattordici metodi individuali descritti nel capitolo 2 (**individuali.R**), i cui risultati sono stati usati per il calcolo delle combinazioni di previsioni descritte nel capitolo 3. Il codice usato per quest'ultima operazione è contenuto nella cartella "**combinazioni**" ed è diviso in 4 file:
+
+- **combinazioni_semplici_logopt.R**: contiene il calcolo dei pesi semplici e di quelli ottimali per i punteggi logaritmico e CL (*Censored Likelihood*).
+- **brier_score.R**: contiene il calcolo dei pesi ottimali in base al punteggio di Brier.
+- **drps_score.R**: contiene il calcolo dei pesi ottimali in base al punteggio DRPS.
+- **pso2.R**: contiene il calcolo dei pesi ottimali basati sui costi di inventario simulati ipotizzando un classico *newsvendor problem*.
+
+Infine, si è svolta una valutazione dei risultati (**valutazione.R**) in base alla calibrazione, *sharpness* e *performance* di inventario.
 
 In alcuni file (ad esempio, valutazione.R) si mostra il codice per un caso specifico (ad esempio, per la valutazione delle combinazioni per serie strettamente intermittenti). 
 
