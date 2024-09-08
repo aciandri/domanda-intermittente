@@ -8,9 +8,9 @@ I dati utilizzati nell'analisi, sono stati forniti da Kaggle per la "M5 Competit
 
 Oltre allo storico delle vendite unitarie per prodotto, i *dataset* forniscono anche alcune informazioni esogene riguardo al bene stesso e agli eventi di calendario che potrebbero influenzare l'andamento delle vendite, come ad esempio l'attività a scopo promozionale SNAP (*Supplemental Nutrition Assistance Program*), e alcune festività.
 
-Nello specifico, i dati contengono 3049 prodotti venduti in 10 negozi (locati in California, Texas e Wisconsin) e classificati in 7 dipartimenti, a loro volta disaggragati in 3 categorie (\textit{Hobbies, Foods, Household}).
+Nello specifico, i dati contengono 3049 prodotti venduti in 10 negozi (locati in California, Texas e Wisconsin) e classificati in 7 dipartimenti, a loro volta disaggragati in 3 categorie (*Hobbies, Foods, Household*).
 
-I dati originali forniti da Kaggle sono suddivisi in 3 \textit{datasets}, relativi rispettivamente allo storico delle vendite del prodotto (ogni riga corrisponde allo storico delle vendite di una SKU), alle informazioni di calendario e ai prezzi di vendita e alle caratteristiche della SKU specifica (e.g., dipartimento, categoria, ...).
+I dati originali forniti da Kaggle sono suddivisi in 3 *datasets*, relativi rispettivamente allo storico delle vendite del prodotto (ogni riga corrisponde allo storico delle vendite di una SKU), alle informazioni di calendario e ai prezzi di vendita e alle caratteristiche della SKU specifica (e.g., dipartimento, categoria, ...).
 
 I dati disponibili (1969 giorni, ossia circa 5.4 anni) sono stati suddivisi in tre parti, in base alla divisione adottata durante la competizione:
 - Il periodo 29/01/2011 - 27/03/2016 (circa 1885 osservazioni) è stato utilizzato come \textit{training set} dei metodi individuali (introdotti nel capitolo 2 della tesi). Per ogni serie, si è selezionato solo il periodo a partire dalla prima vendita positiva del prodotto.
