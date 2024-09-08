@@ -1,21 +1,21 @@
-### Creazione df_storico
-dati = read.csv('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/m5_data/original_m5/sales_train_evaluation.csv')
+### Creazione df_storico ####
+dati = read.csv('m5_data/original_m5/sales_train_evaluation.csv')
 str(dati) # 30490 1947 (1941 dates)
 length(unique(dati$item_id)) # 3049
 length(unique(dati$cat_id)) # 3
 tail(colnames(dati)) # d_1941
 
 ### CALENDARIO
-calendario = read.csv('/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/m5_data/original_m5/calendar.csv')
+calendario = read.csv('m5_data/original_m5/calendar.csv')
 str(calendario)
 length(unique(calendario$d))
 head(calendario) #2011-01-29 
 calendario[1941,] # 2016-05-22 
 
 ## new ####
-df_storico = calendario[1:(which(calendario$d == (colnames(dati))[dim(dati)[2]])),] # inserisco info calendario (fino a quando si hanno info)
-sss = data.frame(t(dati))
-prova = sss[c(1, 7:dim(sss)[1]),]
+df_storico = calendario[1:(which(calendario$d == (colnames(dati))[dim(dati)[2]])),] # inserisco info calendario
+t_df = data.frame(t(dati))
+prova = t_df[c(1, 7:dim(t_df)[1]),]
 colnames(prova) = prova['id',]
 str(prova)
 View(prova)
@@ -39,7 +39,7 @@ write.csv2(df_storico1, file = "df_storico1.csv", row.names = FALSE) # 1 osserva
       
 #### Creo df
 library(readxl)
-una_serie = read_excel("/Users/aurora/Desktop/tesi_magistrale/pratica-tesi_mag/nomi_df.xlsx")
+una_serie = read_excel("nomi_df.xlsx")
 str(una_serie)
 una_serie = as.data.frame(una_serie)
 intermi = which(sapply(
@@ -49,8 +49,8 @@ intermi = which(sapply(
 # sku$id[which(sku$SBC %in% attr(intermi, 'names'))] # id delle serie intermittenti
 da_elaborare = which(colnames(dati) %in% sku$id[which(sku$SBC %in% attr(intermi, 'names'))])
 sss = Sys.time()
-for (serie in da_elaborare){ ## tipo 160, ma non ricordo
-  creo_mini(dati = dati, prezzi = prezzi1, sku = sku, identificativo = serie, cartella = 'erratiche')
+for (serie in da_elaborare){
+  creo_mini(dati = dati, prezzi = prezzi1, sku = sku, identificativo = serie, cartella = 'intermittenti')
 }
 eee = Sys.time()
 eee-sss
@@ -68,8 +68,6 @@ for(i in 1:length(intermi)){
   # elimino le serie con meno del 20% di 0 dopo la prima osservazione diversa da 0 (voglio solo quelle intermittenti)
   if(prop.table(table(inter1$vendite == 0))[2] < .2){
     eliminati = c(eliminati, nome)
-    #file.remove(file_path)
-    #print('fatto')
     next
   }
   categ = SBC_fun(dati = inter1$vendite, serie = nome, categorie =  categ)
