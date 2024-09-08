@@ -143,8 +143,6 @@ SBC_fun = function(dati, serie, grafico = F, unico = T,
   library(tsintermittent)
   
   p = idclass(dati, type = 'SBC')#, outplot = 'detail')
-  # valutazione SBC solo sul train o su tutte? Per essere corretti in previsione sarebbe
-  # meglio solo train e comunque non si perdono tante osservazioni
   cv2 = p$cv2
   adi = p$p
   
@@ -418,7 +416,7 @@ iETS_quant_new = function(train = train_ts, tipo = c("o", "inverse-odds-ratio", 
                           prev_arima = prev_arima){
   mod_iets = adam(train, "MNN", occurrence= tipo, oesmodel="ZZN", holdout=F, silent=FALSE,
                   distribution = "dgamma") # dava MMN e MMN. Il paper diceva MNN
-  fore_iets = forecast(mod_iets, h = 56, interval = 'simulated', level = c(0,seq(.02, .98, by = .02)))#seq(.01,.99, by = .01))
+  fore_iets = forecast(mod_iets, h = 56, interval = 'simulated', level = c(0,seq(.02, .98, by = .02)))
   #str(fore_iets)
   
   fore_iets_df = data.frame(fore_iets$lower)
@@ -461,7 +459,6 @@ boot_wss = function(train_y = train$vendite, test_y = test$vendite, jitter = T,
   
   transizione = data.frame(Ieri = c(0,0,1,1), Oggi = c(0,1,0,1), Prob = c(n00/n0, n01/n0, n10/n1, n11/ n1))
   
-  # LTD = c()
   previsioni = data.frame(vendite = test_y)
   for( s in 1:rep){
     #print(s)
@@ -511,7 +508,6 @@ boot_wss = function(train_y = train$vendite, test_y = test$vendite, jitter = T,
     }
     #print(paste('jittered' , occurrence))
     
-    # LTD = c(LTD, sum(occurrence))
     previsioni[, paste0('camp_', s)] = occurrence
     
   }
@@ -566,11 +562,9 @@ rPIT = function (quantili = prev_gamqr_co[, 3:(ncol(prev_gamqr_co))], y =  val$v
   # quantili = df con colnames=c(quantili)
   # y = variabile con y
   # n = numero di osservazioni da campionare per ottenere la rPIT per ogni t
-  
-  #library(dplyr)
+
   Niter = nrow(quantili)
   pt = rep(NA, Niter * n) # contiene pt campionati da U[F(y-1), F(y)]
-  #  jitter = 1/Niter#.25
   
   
   for(i in 1:Niter){ # per ogni punto nel tempo futuro di interesse
