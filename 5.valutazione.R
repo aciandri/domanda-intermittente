@@ -11,7 +11,7 @@ library(ggplot2)
 library(patchwork)
 
 
-
+source('funzioni_tesi_pulite.R')
 folder = 'previsioni_df/df_prev_OK/df_prev_comb'
 csv = list.files(folder, full.names = T)[c(1,4,11)]
 dd = list.files(csv[2], full.names = T)
